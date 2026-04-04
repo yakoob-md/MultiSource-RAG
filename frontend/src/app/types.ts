@@ -1,0 +1,53 @@
+export type SourceType = 'pdf' | 'web' | 'youtube';
+export type Language = 'EN' | 'HI' | 'TE' | 'ES' | 'FR' | 'DE';
+export type IngestionStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+export interface KnowledgeSource {
+  id: string;
+  type: SourceType;
+  title: string;
+  language: Language;
+  status: IngestionStatus;
+  chunkCount?: number;
+  dateAdded: Date;
+  lastProcessed?: Date;
+  metadata?: {
+    pageCount?: number;
+    url?: string;
+    domain?: string;
+    videoId?: string;
+    thumbnail?: string;
+    duration?: string;
+  };
+}
+
+export interface RetrievedChunk {
+  id: string;
+  sourceId: string;
+  sourceName: string;
+  sourceType: SourceType;
+  language: Language;
+  text: string;
+  similarityScore: number;
+  metadata?: {
+    page?: number;
+    timestamp?: string;
+    url?: string;
+  };
+}
+
+export interface Citation {
+  sourceTitle: string;
+  sourceType: SourceType;
+  reference: string;
+  snippet: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  citations?: Citation[];
+  retrievedChunks?: RetrievedChunk[];
+}
