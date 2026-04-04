@@ -4,13 +4,15 @@ import {
   CheckSquare, Square, ChevronDown, ChevronUp, Filter
 } from 'lucide-react';
 import { ChatMessage, RetrievedChunk, KnowledgeSource } from '../../types';
-import { queryRag, fetchSources } from '../../api';
+import { queryRag, streamQueryRag, fetchSources } from '../../api';
 import { loadChatHistory, saveChatHistory } from '../../data/history';
 
 export function AskAI() {
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadChatHistory());
   const [question, setQuestion] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [isStreaming, setIsStreaming] = useState<boolean>(false);
+  const [streamingAnswer, setStreamingAnswer] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [selectedChunks, setSelectedChunks] = useState<RetrievedChunk[]>(() => {
     const history = loadChatHistory();
@@ -64,7 +66,7 @@ export function AskAI() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!question.trim() || isThinking) return;
+    if (!question.trim() || isThinking || isStreaming) return;
 
     setError(null);
 
@@ -78,22 +80,48 @@ export function AskAI() {
     setMessages(prev => [...prev, userMessage]);
     setQuestion('');
     setIsThinking(true);
+    setIsStreaming(true);
+    setStreamingAnswer('');
 
     try {
       const sourceFilter = selectedSourceIds.size > 0 ? Array.from(selectedSourceIds) : undefined;
-      const response = await queryRag(userMessage.content, sourceFilter);
-
-      const aiMessage: ChatMessage = {
-        id: `msg-${Date.now() + 1}`,
-        role: 'assistant',
-        content: response.answer,
-        timestamp: new Date(),
-        citations: response.sources,
-        retrievedChunks: response.retrievedChunks,
-      };
-
-      setMessages(prev => [...prev, aiMessage]);
-      setSelectedChunks(response.retrievedChunks);
+      
+      let fullAnswer = '';
+      await streamQueryRag(
+        userMessage.content,
+        sourceFilter,
+        [],
+        (token) => {
+          setIsThinking(false);
+          fullAnswer += token;
+          setStreamingAnswer(fullAnswer);
+        },
+        (citations) => {
+          const aiMessage: ChatMessage = {
+            id: `msg-${Date.now() + 1}`,
+            role: 'assistant',
+            content: fullAnswer,
+            timestamp: new Date(),
+            citations: citations,
+            retrievedChunks: [],
+          };
+          setMessages(prev => [...prev, aiMessage]);
+          setIsStreaming(false);
+          setIsThinking(false);
+        },
+        (err) => {
+          setError(err.message);
+          const errorMessage: ChatMessage = {
+            id: `msg-${Date.now() + 1}`,
+            role: 'assistant',
+            content: `Sorry, something went wrong.\n\nDetails: ${err.message}`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setIsStreaming(false);
+          setIsThinking(false);
+        }
+      );
     } catch (err: any) {
       const message = err?.message || 'Failed to get answer from server.';
       setError(message);
@@ -106,7 +134,7 @@ export function AskAI() {
       };
 
       setMessages(prev => [...prev, errorMessage]);
-    } finally {
+      setIsStreaming(false);
       setIsThinking(false);
     }
   };
@@ -203,6 +231,17 @@ export function AskAI() {
             </div>
           )}
 
+          {isStreaming && streamingAnswer !== '' && (
+            <div className="max-w-4xl">
+              <div className="p-6 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700">
+                <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line">
+                  {streamingAnswer}
+                  <span className="animate-pulse">▋</span>
+                </p>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-700 dark:text-red-300">
               {error}
@@ -240,7 +279,7 @@ export function AskAI() {
                 </button>
                 <button
                   type="submit"
-                  disabled={!question.trim() || isThinking}
+                  disabled={!question.trim() || isThinking || isStreaming}
                   className="px-4 py-2 rounded-lg bg-[#6366F1] hover:bg-[#4F46E5] text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <span className="text-sm">Ask</span>

@@ -5,6 +5,8 @@ from backend.api.sources import router as sources_router
 from backend.api.upload  import router as upload_router
 from backend.api.query   import router as query_router
 from backend.api.history import router as history_router
+from backend.api.stream  import router as stream_router
+
 
 app = FastAPI(title="UMKA RAG System", version="2.0.0")
 
@@ -23,6 +25,8 @@ app.include_router(sources_router)
 app.include_router(upload_router)
 app.include_router(query_router)
 app.include_router(history_router)
+app.include_router(stream_router)
+
 
 
 @app.get("/health")
