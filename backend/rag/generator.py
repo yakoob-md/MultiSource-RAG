@@ -1,0 +1,306 @@
+from groq import Groq
+from dataclasses import dataclass
+from typing import Generator
+from backend.config import GROQ_API_KEY, GROQ_MODEL, GROQ_TIMEOUT
+from backend.rag.retriever import RetrievedChunk
+
+
+# ── Chat history type ─────────────────────────────────────────────────────────
+# A single turn in the conversation history.
+# role  : "user" or "assistant"
+# content: the message text
+ChatMessage = dict  # {"role": "user"|"assistant", "content": str}
+
+
+@dataclass
+class Citation:
+    """
+    One source citation shown under the AI answer.
+
+    Fields:
+        source_id   : UUID of the source
+        source_type : "pdf" | "url" | "youtube"
+        source_title: human readable name
+        reference   : page number, timestamp, or URL
+        snippet     : short preview of the chunk text
+        score       : similarity score
+    """
+    source_id   : str
+    source_type : str
+    source_title: str
+    reference   : str
+    snippet     : str
+    score       : float
+
+
+@dataclass
+class GeneratedAnswer:
+    """
+    The complete response returned to the frontend (non-streaming path).
+
+    Fields:
+        answer    : the LLM generated answer text
+        citations : list of Citation objects (up to 5)
+        chunks    : all retrieved chunks (for the right panel in AskAI)
+    """
+    answer   : str
+    citations: list[Citation]
+    chunks   : list[RetrievedChunk]
+
+
+def _build_reference(chunk: RetrievedChunk) -> str:
+    """
+    Build a human readable reference string for a chunk.
+
+    Examples:
+        PDF     → "page 3"
+        URL     → "https://example.com"
+        YouTube → "at 2:34 (https://youtube.com/watch?v=...&t=154s)"
+    """
+    if chunk.source_type == "pdf" and chunk.page_number:
+        return f"page {chunk.page_number}"
+    elif chunk.source_type == "youtube" and chunk.timestamp_s is not None:
+        mins = chunk.timestamp_s // 60
+        secs = chunk.timestamp_s % 60
+        time_str = f"{mins}:{secs:02d}"
+        url  = chunk.url_ref or ""
+        return f"at {time_str} ({url})"
+    elif chunk.source_type == "url" and chunk.url_ref:
+        return chunk.url_ref
+    return ""
+
+
+def _build_messages(
+    question : str,
+    chunks   : list[RetrievedChunk],
+    history  : list[ChatMessage] | None = None,
+) -> list[dict]:
+    """
+    Build the full messages array sent to Groq's chat completions API.
+
+    Structure sent to Groq:
+        [
+          {"role": "system",    "content": <RAG instructions + retrieved context>},
+          {"role": "user",      "content": <history turn 1 question>},
+          {"role": "assistant", "content": <history turn 1 answer>},
+          {"role": "user",      "content": <history turn 2 question>},
+          {"role": "assistant", "content": <history turn 2 answer>},
+          {"role": "user",      "content": <current question>},   ← always last
+        ]
+
+    Why put context in the system message?
+        The system message is read first and governs the entire conversation.
+        Putting retrieved context here means every turn — including follow-ups
+        like "Can you expand on that?" — has access to the same source chunks.
+
+    Why include chat history?
+        Without history, follow-up questions like "What did you mean by that?"
+        have no referent. The model needs prior turns to resolve references.
+
+    History cap (MAX_HISTORY_TURNS = 3):
+        We keep the last 3 user+assistant pairs (= 6 messages).
+        This keeps the context window usage predictable and well within
+        llama3-8b-8192's 8192 token limit. Older turns are dropped.
+
+    Args:
+        question : the current user question
+        chunks   : retrieved chunks for this turn
+        history  : previous {"role", "content"} turns, oldest first. Can be None.
+
+    Returns:
+        list of message dicts ready for Groq chat completions
+    """
+    MAX_HISTORY_TURNS = 3   # last 3 turns = last 6 messages
+
+    # ── Build context block ───────────────────────────────────────────────────
+    context_parts = []
+    for i, chunk in enumerate(chunks, start=1):
+        ref    = _build_reference(chunk)
+        header = f"[{i}] Source: {chunk.source_title}"
+        if ref:
+            header += f" ({ref})"
+        context_parts.append(f"{header}\n{chunk.chunk_text}")
+
+    context = "\n\n".join(context_parts)
+
+    # ── System message: instructions + context ────────────────────────────────
+    system_content = f"""You are a helpful AI assistant. Answer questions using ONLY the context provided below.
+If the answer is not in the context, say "I don't have enough information to answer this question."
+Always be specific and cite which source your answer comes from.
+When answering follow-up questions, use the conversation history to understand what the user is referring to.
+
+RETRIEVED CONTEXT:
+{context}"""
+
+    messages: list[dict] = [
+        {"role": "system", "content": system_content}
+    ]
+
+    # ── Append capped chat history ────────────────────────────────────────────
+    if history:
+        # Each turn = 1 user msg + 1 assistant msg = 2 entries
+        recent = history[-(MAX_HISTORY_TURNS * 2):]
+        for msg in recent:
+            if msg.get("role") in ("user", "assistant") and msg.get("content"):
+                messages.append({
+                    "role"   : msg["role"],
+                    "content": str(msg["content"]),
+                })
+
+    # ── Current question is always the final user message ────────────────────
+    messages.append({"role": "user", "content": question})
+
+    return messages
+
+
+def _get_groq_client() -> Groq:
+    """
+    Create and return a configured Groq client.
+    Raises a clear error if the API key is missing.
+    """
+    if not GROQ_API_KEY:
+        raise ValueError(
+            "GROQ_API_KEY is not set. "
+            "Get a free key at https://console.groq.com and set it as an "
+            "environment variable: set GROQ_API_KEY=gsk_..."
+        )
+    return Groq(api_key=GROQ_API_KEY)
+
+
+def _build_citations(chunks: list[RetrievedChunk]) -> list[Citation]:
+    """
+    Build citation list from top 5 chunks, one citation per unique source.
+    Shared by both streaming and non-streaming paths.
+    """
+    citations    = []
+    seen_sources = set()
+
+    for chunk in chunks[:5]:
+        if chunk.source_id in seen_sources:
+            continue
+        seen_sources.add(chunk.source_id)
+
+        citations.append(Citation(
+            source_id    = chunk.source_id,
+            source_type  = chunk.source_type,
+            source_title = chunk.source_title,
+            reference    = _build_reference(chunk),
+            snippet      = chunk.chunk_text[:150] + "...",
+            score        = chunk.score,
+        ))
+
+    return citations
+
+
+# ── Streaming path ────────────────────────────────────────────────────────────
+
+def generate_answer_stream(
+    question : str,
+    chunks   : list[RetrievedChunk],
+    history  : list[ChatMessage] | None = None,
+) -> Generator[str, None, None]:
+    """
+    Streaming answer generation with chat history support.
+
+    Yields text tokens as they arrive from Groq.
+    Used by the /query-stream SSE endpoint.
+
+    Args:
+        question : the current user question
+        chunks   : retrieved chunks from the retriever
+        history  : previous conversation turns (oldest first), or None
+
+    Yields:
+        str tokens (partial answer text)
+    """
+    if not chunks:
+        yield "I don't have any relevant information to answer this question. Please upload some documents first."
+        return
+
+    messages = _build_messages(question, chunks, history)
+    print(f"[Generator] Streaming | model={GROQ_MODEL} | "
+          f"history_turns={len(history) if history else 0} | "
+          f"total_messages={len(messages)}")
+
+    client = _get_groq_client()
+
+    stream = client.chat.completions.create(
+        model    = GROQ_MODEL,
+        messages = messages,
+        stream   = True,
+        timeout  = GROQ_TIMEOUT,
+    )
+
+    for chunk_response in stream:
+        token = chunk_response.choices[0].delta.content
+        if token is not None:
+            yield token
+
+
+# ── Non-streaming path ────────────────────────────────────────────────────────
+
+def generate_answer(
+    question : str,
+    chunks   : list[RetrievedChunk],
+    history  : list[ChatMessage] | None = None,
+) -> GeneratedAnswer:
+    """
+    Non-streaming answer generation with chat history support.
+
+    Returns a complete GeneratedAnswer object.
+    Used by the standard /query endpoint.
+
+    Args:
+        question : the current user question
+        chunks   : retrieved chunks from the retriever
+        history  : previous conversation turns (oldest first), or None
+
+    Returns:
+        GeneratedAnswer with answer text, citations, and chunks
+    """
+    if not chunks:
+        return GeneratedAnswer(
+            answer    = "I don't have any relevant information to answer this question. Please upload some documents first.",
+            citations = [],
+            chunks    = []
+        )
+
+    # ── Step 1: Build messages with history ───────────────────────────────────
+    messages = _build_messages(question, chunks, history)
+    print(f"[Generator] Sending | model={GROQ_MODEL} | "
+          f"history_turns={len(history) if history else 0} | "
+          f"total_messages={len(messages)}")
+
+    # ── Step 2: Call Groq ─────────────────────────────────────────────────────
+    try:
+        client = _get_groq_client()
+
+        stream = client.chat.completions.create(
+            model    = GROQ_MODEL,
+            messages = messages,
+            stream   = True,
+            timeout  = GROQ_TIMEOUT,
+        )
+
+        tokens = []
+        for chunk_response in stream:
+            token = chunk_response.choices[0].delta.content
+            if token is not None:
+                tokens.append(token)
+
+        answer = "".join(tokens).strip()
+        print(f"[Generator] Done | {len(answer)} chars")
+
+    except ValueError:
+        raise
+    except Exception as e:
+        raise RuntimeError(f"Groq API error: {e}") from e
+
+    # ── Step 3: Build citations ───────────────────────────────────────────────
+    citations = _build_citations(chunks)
+
+    return GeneratedAnswer(
+        answer    = answer,
+        citations = citations,
+        chunks    = chunks
+    )
