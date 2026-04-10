@@ -1,6 +1,7 @@
 import json
 import logging
-from fastapi import APIRouter
+import asyncio
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from groq import Groq
@@ -20,11 +21,26 @@ class StreamRequest(BaseModel):
     history: list[dict] = []
 
 @router.post("/query/stream")
-async def query_stream(req: StreamRequest):
-    def event_generator():
+async def query_stream(req: StreamRequest, request: Request):
+    async def event_generator():
         sent_done = False
         try:
-            chunks = retrieve(req.question, req.source_ids)
+            # Check if models are still warming up
+            if hasattr(request.app.state, 'models_ready') and not request.app.state.models_ready.is_set():
+                msg = "⏳ *Warming up internal AI models for the first query... This may take up to 15 seconds.* \n\n"
+                yield f'data: {{"token": {json.dumps(msg)}}}\n\n'
+                
+                # Keep yielding harmless "keep-alive" dots so the frontend connection doesn't timeout
+                # while we wait for the models to finish loading
+                while not request.app.state.models_ready.is_set():
+                    yield f'data: {{"token": {json.dumps("")}}}\n\n'
+                    try:
+                        await asyncio.wait_for(request.app.state.models_ready.wait(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        continue  # Re-evaluate the while loop
+            
+            # Offload heavy CPU-bound retriever logic
+            chunks = await asyncio.to_thread(retrieve, req.question, req.source_ids)
             
             if not chunks:
                 msg = "I don't have any relevant information to answer this question. Please upload some documents first."
@@ -35,14 +51,17 @@ async def query_stream(req: StreamRequest):
             
             prompt_messages = _build_prompt(req.question, chunks, req.history)
             
-            client = Groq(api_key=GROQ_API_KEY)
+            # Use asyncio to offload Groq streaming setup to avoid event loop bloat
+            def run_groq():
+                client = Groq(api_key=GROQ_API_KEY)
+                return client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=prompt_messages,
+                    stream=True,
+                    max_tokens=1024
+                )
             
-            stream = client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=prompt_messages,
-                stream=True,
-                max_tokens=1024
-            )
+            stream = await asyncio.to_thread(run_groq)
             
             for chunk_response in stream:
                 token = chunk_response.choices[0].delta.content
@@ -50,6 +69,8 @@ async def query_stream(req: StreamRequest):
                     # use json.dumps for the inner string token to escape quotes
                     token_escaped = json.dumps(token)
                     yield f'data: {{"token": {token_escaped}}}\n\n'
+                    # Minor sleep to yield to event loop during tight synchronous iteration over network socket
+                    await asyncio.sleep(0)
             
             citations = _build_citations(chunks)
             citations_list = [dataclasses.asdict(c) for c in citations]
@@ -74,3 +95,4 @@ async def query_stream(req: StreamRequest):
             "Connection": "keep-alive",
         }
     )
+

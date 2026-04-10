@@ -10,12 +10,20 @@ from backend.api.stream  import router as stream_router
 from backend.ingestion.embedder import get_model as preload_embedder
 from backend.rag.retriever import _get_reranker as preload_reranker
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("[Startup] ✨ Pre-loading heavy ML models into memory... This might take ~5-15 seconds.")
+import asyncio
+
+def _load_models(app: FastAPI):
+    print("[Startup] ✨ Thread loading heavy ML models into memory... This might take ~5-15 seconds.")
     preload_embedder()
     preload_reranker()
     print("[Startup] 🚀 Models fully loaded! Ready for blazing-fast queries.")
+    app.state.models_ready.set()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.models_ready = asyncio.Event()
+    # Offload the blocking CPU/disk work so FastAPI doesn't freeze the frontend
+    asyncio.create_task(asyncio.to_thread(_load_models, app))
     yield
 
 app = FastAPI(title="UMKA RAG System", version="2.0.0", lifespan=lifespan)
