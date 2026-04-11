@@ -45,11 +45,19 @@ def extract_legal_metadata(text: str, doc_type: str) -> dict:
 
     # 4. Case Name (search for vs or v. near top - check first 2000 chars)
     top_text = text[:2000]
-    case_match = re.search(r"([A-Z\s\.]+)\s+(?:vs|v\.)\s+([A-Z\s\.]+)", top_text)
-    if case_match:
-        metadata["petitioner"] = case_match.group(1).strip()
-        metadata["respondent"] = case_match.group(2).strip()
-        metadata["case_name"] = f"{metadata['petitioner']} vs {metadata['respondent']}"
+    # Simple strategy: find 'vs' or 'v.' and extract text around it
+    case_patterns = [r"(.+)\s+vs\.?\s+(.+)", r"(.+)\s+v\.\s+(.+)"]
+    for pattern in case_patterns:
+        case_match = re.search(pattern, top_text, re.IGNORECASE)
+        if case_match:
+            p_raw = case_match.group(1).strip().split('\n')[-1] # Get last line before vs
+            r_raw = case_match.group(2).strip().split('\n')[0]  # Get first line after vs
+            
+            # Clean up prefixes
+            metadata["petitioner"] = re.sub(r"^(Petitioner|Appellant|Plaintiff):\s*", "", p_raw, flags=re.IGNORECASE).strip()
+            metadata["respondent"] = re.sub(r"^(Respondent|Defendant):\s*", "", r_raw, flags=re.IGNORECASE).strip()
+            metadata["case_name"] = f"{metadata['petitioner']} vs {metadata['respondent']}"
+            break
 
     # 5. Citation ((YEAR) 1 SCC 1 or AIR 2024 SC 1)
     citation_match = re.search(r"(\(\d{4}\)\s+\d+\s+SCC\s+\d+|AIR\s+\d{4}\s+SC\s+\d+)", text, re.IGNORECASE)
