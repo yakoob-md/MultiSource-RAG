@@ -1,25 +1,12 @@
-# ── Environment Variables ───────────────────────────────────────
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# ── Python Virtual Environments ───────────────────────────────
-venv/
-.venv/
-env/
-.env/
-ragvenv_2/
-bin/
-lib/
-include/
-
-# ── Python Cache & Artifacts ───────────────────────────────────
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+# C extensions
 *.so
+
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -33,26 +20,94 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# ── Node.js (Frontend) ────────────────────────────────────────
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py.cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Django stuff:
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Environments
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.envrc
+venv/
+.venv/
+env/
+.env/
+ragvenv_2/
+
+# IDEs
+.idea/
+.vscode/
+.cursorignore
+.cursorindexingignore
+
+# Node.js (Frontend)
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
-dist/
-build/
-.cache/
+frontend/dist/
+frontend/build/
 
-# ── Project Data & Indexes ────────────────────────────────────
-# We ignore the data folder as it contains local FAISS indexes 
-# and user-uploaded files which should not be in version control.
+# Project Data & Indexes
 data/
+backend/temp/
 
-# ── OS Specific ───────────────────────────────────────────────
+# OS Specific
 .DS_Store
 .DS_Store?
 ._*

@@ -18,6 +18,9 @@ export interface KnowledgeSource {
     videoId?: string;
     thumbnail?: string;
     duration?: string;
+    docType?: string;
+    court?: string;
+    judgmentDate?: string;
   };
 }
 
@@ -33,6 +36,7 @@ export interface RetrievedChunk {
     page?: number;
     timestamp?: string;
     url?: string;
+    ipcSections?: string[];
   };
 }
 

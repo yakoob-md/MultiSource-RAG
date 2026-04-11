@@ -1,3 +1,5 @@
+# MultiSource-RAG
+
 # UMKA RAG System
 
 UMKA is an advanced Retrieval-Augmented Generation (RAG) system designed to let you chat conversationally with your unstructured data. By seamlessly ingesting PDFs, Websites, and YouTube video transcripts, the system stores semantic relationships in a locally-hosted FAISS index paired with a MySQL metadata store, and uses the Groq API (LLaMA 3.3) for lightning-fast answer generation.

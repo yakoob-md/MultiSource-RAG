@@ -1,0 +1,29 @@
+You are adding a new API route file to a FastAPI application. Do NOT modify any existing files.
+
+Existing system context:
+- backend/main.py already has: app.include_router(sources_router), upload_router, query_router, history_router
+- backend/ingestion/legal_loader.py has: ingest_legal_document(file_path, filename, doc_type) -> dict
+- backend/api/upload.py shows the pattern for file upload endpoints
+
+Create ONLY this new file: backend/api/legal_routes.py
+
+The file must:
+1. Import: APIRouter, UploadFile, File, HTTPException from fastapi; shutil, tempfile, Path
+2. Import: ingest_legal_document from backend.ingestion.legal_loader
+3. Create: router = APIRouter()
+
+4. Define POST endpoint: /upload-legal
+   - Accepts: file: UploadFile = File(...), doc_type: str = "judgment"
+   - Validates: file.filename must end in .pdf, else raise HTTPException 400
+   - Validates: doc_type must be one of ['statute','judgment','constitution'], else raise HTTPException 400
+   - Saves file to tempfile (same pattern as existing upload.py)
+   - Calls ingest_legal_document(tmp_path, file.filename, doc_type)
+   - Cleans up tempfile in finally block
+   - Returns: {"message": "Legal document ingested", "source_id": ..., "title": ..., "chunk_count": ..., "doc_type": ...}
+
+5. Define GET endpoint: /legal-sources
+   - No parameters
+   - Queries MySQL: SELECT s.id, s.title, s.status, s.created_at, ls.doc_type, ls.court, ls.judgment_date FROM sources s JOIN legal_sources ls ON s.id = ls.source_id ORDER BY s.created_at DESC
+   - Returns: {"sources": [...list of rows with datetime converted to isoformat...]}
+
+After creating this file, also tell me the exact line to add to backend/main.py to register this router. Do not write the modified main.py -- just provide the two lines: the import and the include_router call.
