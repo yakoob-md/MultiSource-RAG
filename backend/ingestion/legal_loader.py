@@ -2,6 +2,7 @@ import uuid
 import shutil
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 import pdfplumber
 
@@ -120,6 +121,19 @@ def ingest_legal_document(file_path: Path, filename: str, doc_type: str) -> dict
             ))
 
             # b. Insert into legal_sources
+            judgment_date = None
+            if metadata["date"]:
+                try:
+                    # Try to parse different formats and convert to YYYY-MM-DD
+                    for fmt in ("%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%B %d, %Y"):
+                        try:
+                            judgment_date = datetime.strptime(metadata["date"], fmt).strftime("%Y-%m-%d")
+                            break
+                        except ValueError:
+                            continue
+                except Exception:
+                    judgment_date = None
+
             cursor.execute("""
                 INSERT INTO legal_sources (id, source_id, doc_type, court, judgment_date, ipc_sections, petitioner, respondent)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -128,7 +142,7 @@ def ingest_legal_document(file_path: Path, filename: str, doc_type: str) -> dict
                 source_id,
                 doc_type,
                 metadata["court"],
-                metadata["date"] if metadata["date"] else None, # Note: regex date might need parsing for MySQL DATE type
+                judgment_date,
                 json.dumps(metadata["ipc_sections"]),
                 metadata["petitioner"],
                 metadata["respondent"]
