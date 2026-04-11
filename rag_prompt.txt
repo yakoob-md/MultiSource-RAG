@@ -1,59 +1,61 @@
-You are adding new files to a Python RAG system. Do NOT touch any existing files.
+You are adding a new file to a Python RAG system. This is the most GPU-sensitive file in the project.
 
-Existing system context:
-- backend/config.py has: BASE_DIR, DATA_DIR, UPLOAD_DIR (all Path objects)
-- backend/database/connection.py has get_connection()
-- data/ directory exists at project root
-- image_jobs table exists with columns: id, source_id, image_path, status, caption, error_message, created_at, updated_at
+CRITICAL GPU CONSTRAINTS (read before writing any code):
+- RTX 2050 has 4GB VRAM
+- The embedding model (multilingual-e5-large) uses ~2.5GB VRAM when loaded
+- LLaVA must NEVER run at the same time as the embedding model
+- LLaVA must be loaded in 4-bit quantization (BitsAndBytesConfig, load_in_4bit=True)
+- After captioning EACH image, call torch.cuda.empty_cache() and gc.collect()
+- The model object must be explicitly deleted (del model, del processor) before returning
+- This script runs as a STANDALONE PROCESS, not imported by the web server
 
-Create ONLY these two new files:
+Create ONLY this new file: backend/vision/captioner.py
 
-FILE 1: backend/ingestion/image_loader.py
+The file must:
+1. Have a shebang line: #!/usr/bin/env python3
+2. Imports: torch, gc, json, sys, Path from pathlib
+3. Imports: from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration, BitsAndBytesConfig
+4. Imports: from PIL import Image
+5. Imports: from backend.database.connection import get_connection
+6. Imports: from backend.ingestion.image_loader import get_pending_image_jobs, mark_job_completed, mark_job_failed
 
-This file handles image upload and job queuing. It does NOT run the vision model.
+7. Define: MODEL_ID = "llava-hf/llava-v1.6-mistral-7b-hf"
 
-Define:
-1. IMAGES_DIR = DATA_DIR / "images"  (create if not exists using .mkdir(parents=True, exist_ok=True))
-2. ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff'}
+8. Define function: load_model_int4() -> tuple[processor, model]
+   - Create BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16, bnb_4bit_quant_type="nf4")
+   - Load processor: LlavaNextProcessor.from_pretrained(MODEL_ID)
+   - Load model: LlavaNextForConditionalGeneration.from_pretrained(MODEL_ID, quantization_config=bnb_config, device_map="auto")
+   - Print: f"[Captioner] Model loaded. VRAM used: {torch.cuda.memory_allocated()/1e9:.2f}GB"
+   - Return (processor, model)
 
-3. function: save_image_and_queue(file_bytes: bytes, filename: str, source_context: str = "") -> dict
-   - Validate: Path(filename).suffix.lower() must be in ALLOWED_EXTENSIONS, else raise ValueError
-   - Generate: image_id = str(uuid.uuid4())
-   - Save: dest_path = IMAGES_DIR / f"{image_id}{Path(filename).suffix.lower()}"
-   - Write file_bytes to dest_path
-   - Insert into sources table: type='pdf' (use 'image' -- wait, sources.type is ENUM('pdf','url','youtube'). 
-     IMPORTANT: Do NOT insert into sources table. Instead insert directly into image_jobs:
-     id=image_id, source_id=image_id (same for now), image_path=str(dest_path), status='pending'
-   - Return: {"image_id": image_id, "image_path": str(dest_path), "status": "pending", "filename": filename}
+9. Define function: caption_single_image(image_path: str, processor, model) -> str
+   - Load image: Image.open(image_path).convert("RGB")
+   - Build prompt: "[INST] <image>\nDescribe this image in detail. Include: what objects or people are present, any text visible, the overall context, and what question this image would help answer. Be specific and comprehensive. [/INST]"
+   - Tokenize: inputs = processor(prompt, image, return_tensors="pt").to("cuda")
+   - Generate: output = model.generate(**inputs, max_new_tokens=400, do_sample=False)
+   - Decode: full_text = processor.decode(output[0], skip_special_tokens=True)
+   - Extract only the part after [/INST]: return full_text.split("[/INST]")[-1].strip()
+   - Wrap entire function in try/except, return "Caption generation failed." on any error
 
-4. function: get_pending_image_jobs() -> list[dict]
-   - Query: SELECT id, image_path FROM image_jobs WHERE status = 'pending' ORDER BY created_at ASC
-   - Return list of row dicts
+10. Define function: run_caption_pipeline()
+    - Print "[Captioner] Starting image captioning pipeline"
+    - jobs = get_pending_image_jobs()
+    - Print f"[Captioner] Found {len(jobs)} pending jobs"
+    - If no jobs: print "No jobs. Exiting." and return
+    - Load model: processor, model = load_model_int4()
+    - For each job:
+      * Print f"[Captioner] Processing: {job['image_path']}"
+      * caption = caption_single_image(job['image_path'], processor, model)
+      * mark_job_completed(job['id'], caption)
+      * torch.cuda.empty_cache()
+      * gc.collect()
+    - After ALL jobs: del model; del processor; torch.cuda.empty_cache(); gc.collect()
+    - Print "[Captioner] Done. Model unloaded from VRAM."
 
-5. function: mark_job_completed(job_id: str, caption: str)
-   - UPDATE image_jobs SET status='completed', caption=caption WHERE id=job_id
+11. At bottom of file:
+    if __name__ == "__main__":
+        run_caption_pipeline()
 
-6. function: mark_job_failed(job_id: str, error: str)
-   - UPDATE image_jobs SET status='failed', error_message=error WHERE id=job_id
-
-FILE 2: backend/api/image_routes.py
-
-Define:
-1. router = APIRouter()
-
-2. POST /upload-image
-   - Accepts: file: UploadFile = File(...), context: str = ""
-   - Read file bytes: await file.read()
-   - Call save_image_and_queue(file_bytes, file.filename, context)
-   - Return: {"message": "Image queued for processing", "image_id": ..., "status": "pending"}
-   - On ValueError: raise HTTPException(400, detail=str(e))
-
-3. GET /image-jobs
-   - Returns all image_jobs rows: SELECT id, image_path, status, caption, error_message, created_at FROM image_jobs ORDER BY created_at DESC
-   - Convert datetimes to isoformat
-   - Return: {"jobs": [...]}
-
-4. GET /image-jobs/pending-count
-   - Returns: {"count": N} where N = SELECT COUNT(*) FROM image_jobs WHERE status='pending'
-
-After creating these files, tell me the exact two lines to add to backend/main.py (import + include_router). Do not write the full main.py.
+IMPORTANT: This file must NEVER be imported by any FastAPI route or by embedder.py. It runs standalone only.
+Add a comment at the top: # Run this ONLY after the FastAPI server is stopped or the embedding model is confirmed unloaded.
+# Command: python -m backend.vision.captioner

@@ -9,6 +9,7 @@ from backend.api.query   import router as query_router
 from backend.api.history import router as history_router
 from backend.api.stream  import router as stream_router
 from backend.api.legal_routes import router as legal_router
+from backend.api.image_routes import router as image_router
 
 from backend.ingestion.embedder import get_model as preload_embedder
 from backend.rag.retriever import _get_reranker as preload_reranker
@@ -65,6 +66,7 @@ app.include_router(query_router)
 app.include_router(history_router)
 app.include_router(stream_router)
 app.include_router(legal_router)
+app.include_router(image_router)
 
 # ── Health Check ──────────────────────────────────────────────────────────────
 
