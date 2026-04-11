@@ -1,0 +1,49 @@
+You are adding a new file to a Python RAG system. Do NOT modify any existing files.
+
+Existing system context:
+- backend/ingestion/pdf_loader.py uses pdfplumber to extract text page by page
+- backend/ingestion/chunker.py has chunk_text_with_pages(pages: list[str]) -> list[dict]
+- backend/ingestion/embedder.py has embed_texts(texts: list[str]) -> list[list[float]]
+- backend/vectorstore/faiss_store.py has add_vectors(chunk_ids, vectors)
+- backend/database/connection.py has get_connection() context manager
+- backend/config.py has UPLOAD_DIR, EMBEDDING_MODEL, TOP_K
+
+Create ONLY this new file: backend/ingestion/legal_loader.py
+
+The file must:
+1. Import pdfplumber, uuid, shutil, json, re, Path from pathlib, get_connection, chunk_text_with_pages, embed_texts, add_vectors, UPLOAD_DIR
+2. Define function: ingest_legal_document(file_path: Path, filename: str, doc_type: str) -> dict
+   - doc_type is one of: 'statute', 'judgment', 'constitution'
+3. Inside ingest_legal_document:
+   a. Generate source_id = str(uuid.uuid4())
+   b. Copy file to UPLOAD_DIR / f"{source_id}_{filename}"
+   c. Extract text page by page using pdfplumber (same as existing pdf_loader.py)
+   d. Call extract_legal_metadata(full_text, doc_type) to get metadata dict
+   e. Call chunk_text_with_pages(pages) to get chunks list
+   f. For each chunk dict, call extract_chunk_metadata(chunk['text']) to get chunk-level IPC sections
+   g. Embed all chunks using embed_texts([c['text'] for c in chunks])
+   h. Insert into sources table: type='pdf', title=filename, origin=str(dest_path), language='en', chunk_count=len(chunks), status='completed'
+   i. Insert into legal_sources table: source_id, doc_type, and fields from metadata
+   j. Insert each chunk into chunks table with chunk_type='legal' and legal_metadata=json.dumps({...chunk metadata...})
+   k. Call add_vectors(chunk_ids, vectors)
+   l. Return dict with source_id, chunk_count, title, doc_type
+
+4. Define function: extract_legal_metadata(text: str, doc_type: str) -> dict
+   - Returns dict with keys: case_name, court, date, ipc_sections, petitioner, respondent, citation
+   - Use regex patterns:
+     * court: search for patterns like "IN THE SUPREME COURT", "HIGH COURT OF [STATE]", "DISTRICT COURT"
+     * date: search for date patterns like "dd/mm/yyyy" or "Month dd, yyyy"
+     * ipc_sections: search for "Section \d+" or "IPC \d+" or "u/s \d+"
+     * case_name: search for "... vs ..." or "... v. ..." near top of document
+     * petitioner/respondent: split case_name on ' vs ' or ' v. '
+     * citation: search for "(YEAR) \d+ SCC \d+" or "AIR \d+ SC \d+"
+   - If a field is not found, set it to None
+   - ipc_sections must be a list even if empty: []
+
+5. Define function: extract_chunk_metadata(chunk_text: str) -> dict
+   - Returns dict with only ipc_sections key (list of strings found in this chunk)
+   - Same regex as above for IPC sections
+
+All database inserts must use parameterized queries with %s placeholders.
+All try/except must re-raise after logging.
+No external libraries beyond what is listed in requirements.txt (pdfplumber, mysql-connector-python, uuid, re, json are all available).
