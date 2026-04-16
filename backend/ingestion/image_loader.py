@@ -25,10 +25,16 @@ def save_image_and_queue(file_bytes: bytes, filename: str, source_context: str =
     with open(dest_path, "wb") as f:
         f.write(file_bytes)
 
-    # Insert into image_jobs table
-    # Note: source_id is set to image_id per prompt instruction
     with get_connection() as conn:
         cursor = conn.cursor()
+        
+        # 1. Insert into base sources table
+        cursor.execute("""
+            INSERT INTO sources (id, type, title, origin, language, chunk_count, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (image_id, "image", filename, str(dest_path), "en", 1, "processing"))
+
+        # 2. Insert into image_jobs table
         cursor.execute("""
             INSERT INTO image_jobs (id, source_id, image_path, status)
             VALUES (%s, %s, %s, %s)

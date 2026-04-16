@@ -11,6 +11,9 @@ from PIL import Image
 from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration, BitsAndBytesConfig
 
 from backend.database.connection import get_connection
+from backend.vectorstore.faiss_store import add_vectors
+from backend.ingestion.embedder import embed_texts
+import uuid
 from backend.ingestion.image_loader import get_pending_image_jobs, mark_job_completed, mark_job_failed
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -107,10 +110,37 @@ def run_caption_pipeline():
             caption = caption_single_image(image_path, processor, model)
             
             if caption != "Caption generation failed.":
+                # 1. Update image_jobs table
                 mark_job_completed(job_id, caption)
-                print(f"[Captioner] Job {job_id} completed.")
+                
+                # 2. Embed the generated caption
+                vectors = embed_texts([caption])
+                
+                chunk_id = str(uuid.uuid4())
+                
+                # 3. Save into chunks DB
+                with get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        INSERT INTO chunks (id, source_id, chunk_text, chunk_index, chunk_type, image_path)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (chunk_id, job_id, caption, 0, 'image', image_path))
+                    
+                    cursor.execute("""
+                        UPDATE sources SET status = 'completed' WHERE id = %s
+                    """, (job_id,))
+                    conn.commit()
+                
+                # 4. Sync with FAISS
+                add_vectors([chunk_id], vectors)
+                
+                print(f"[Captioner] Job {job_id} completed and indexed.")
             else:
                 mark_job_failed(job_id, "Model failed to generate caption.")
+                with get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE sources SET status = 'failed' WHERE id = %s", (job_id,))
+                    conn.commit()
                 print(f"[Captioner] Job {job_id} failed.")
             
             # Aggressive memory cleanup after every image
