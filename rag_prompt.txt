@@ -1,83 +1,52 @@
-You are adding a /legal-query API endpoint to an existing FastAPI RAG system.
+You are adding a LegalSearch page to an existing React + TypeScript frontend.
 
-EXISTING (do not modify):
-- backend/rag/retriever.py: retrieve(question, source_ids) -> list[RetrievedChunk]
-- backend/database/connection.py: get_connection()
-- backend/config.py: GROQ_API_KEY, GROQ_MODEL
-- chunks table has columns: id, chunk_text, chunk_type, legal_metadata (JSON)
+EXISTING CONTEXT:
+- frontend/src/app/routes.tsx already has route registration pattern
+- frontend/src/app/api.ts has queryRag() function as a pattern to follow
+- frontend/src/app/types.ts has ChatMessage, Citation types
 
-CREATE FILE: backend/api/legal_query_routes.py
+ADD TO api.ts (append, do not modify existing functions):
+export async function queryLegal(question: string, sourceFilter?: string): Promise<LegalQueryResponse>
+- POST to ${API_BASE}/legal-query
+- Body: {question, source_filter: sourceFilter || null, language: "en"}
+- Return typed response
 
-ENDPOINT: POST /legal-query
-
-Request body:
-{
-  "question": "What is the punishment for murder under IPC?",
-  "source_filter": "statute" | "judgment" | null,
-  "language": "en" | "hi"
+ADD TYPE to types.ts:
+export interface LegalCitation {
+  document: string;
+  section?: string;
+  title?: string;
+  text_excerpt: string;
+  amendments?: string[];
+  source_type: "statute" | "judgment";
+  court?: string;
+  date?: string;
+  para?: string;
+}
+export interface LegalQueryResponse {
+  answer: string;
+  legal_basis: string;
+  citations: LegalCitation[];
+  retrieved_chunks: any[];
 }
 
-Pipeline:
-1. Call retrieve(question, source_ids=None) — gets top 8 chunks
-2. Filter to only chunks where chunk_type = 'legal' (query DB for chunk_types)
-3. For each legal chunk, fetch its legal_metadata from DB
-4. Build a structured prompt:
+CREATE FILE: frontend/src/app/components/screens/LegalSearch.tsx
 
-SYSTEM:
-You are a legal information assistant for Indian law. Answer ONLY from the provided legal documents.
-Format your answer in this EXACT structure:
+The UI must have:
+1. Header: "Indian Legal Assistant" with subtitle "Powered by IPC, CrPC, Constitution, and Supreme Court Judgments"
+2. Search input (large, prominent) with placeholder "Ask a legal question... e.g. 'What is the punishment for murder?'"
+3. Source filter radio buttons: All | Statutes Only | Judgments Only
+4. On submit: show loading state "Searching legal corpus..."
+5. Answer section styled as a formal document:
+   - ANSWER in a clean box
+   - LEGAL BASIS in a highlighted quote box (border-left: 4px solid #6366F1)
+   - CITATIONS section: each citation as a card showing:
+     * Badge: "IPC" | "CrPC" | "Constitution" | "SC Judgment" (color-coded)
+     * Section number + title (for statutes)
+     * Case name + court + date (for judgments)
+     * Text excerpt in monospace/quote style
+     * If amendments present: show collapsible "Amendment History" section
+6. Disclaimer at bottom: "This system provides legal information only, not legal advice. Consult a qualified advocate for specific legal matters."
 
-ANSWER:
-[Clear explanation in plain language]
-
-LEGAL BASIS:
-[Exact statutory text or judgment quote]
-
-CITATIONS:
-1. [Document] | [Section/Para] | [Court if applicable] | [Date if applicable]
-2. ...
-
-AMENDMENTS & NOTES:
-[List any relevant amendments to the cited sections]
-
-IMPORTANT: Never give legal advice. State what the law says, not what to do.
-If information is not in the context, say "Not found in loaded documents."
-
-CONTEXT:
-[for each chunk:]
---- SOURCE {i}: {source_title} | {section_id or case_name} ---
-{chunk_text}
-Metadata: Court={court}, Date={date}, Amendments={amendments}
----
-
-USER: {question}
-
-5. Call Groq API (non-streaming for /legal-query)
-6. Parse the response to extract CITATIONS section
-7. Return:
-{
-  "answer": "...",
-  "legal_basis": "...",
-  "citations": [
-    {
-      "document": "Indian Penal Code, 1860",
-      "section": "302",
-      "title": "Punishment for murder",
-      "text_excerpt": "Whoever commits murder shall be punished with death...",
-      "amendments": ["Subs. by Act 26 of 1955"],
-      "source_type": "statute"
-    },
-    {
-      "document": "State of Maharashtra v. Sharma",
-      "court": "Supreme Court of India",
-      "date": "15th March 2024",
-      "para": "3",
-      "text_excerpt": "This Court has consistently held...",
-      "source_type": "judgment"
-    }
-  ],
-  "retrieved_chunks": [...raw chunks for transparency panel...]
-}
-
-ALSO: Register this router in backend/main.py.
-Tell me the two lines to add (import + include_router). Do not rewrite main.py.
+Style: match existing dark/light theme (use same Tailwind classes as AskAI.tsx).
+Register route /legal in routes.tsx.
