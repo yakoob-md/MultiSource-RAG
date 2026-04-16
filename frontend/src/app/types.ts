@@ -55,3 +55,22 @@ export interface ChatMessage {
   citations?: Citation[];
   retrievedChunks?: RetrievedChunk[];
 }
+
+export interface LegalCitation {
+  document: string;
+  section?: string;
+  title?: string;
+  text_excerpt: string;
+  amendments?: string[];
+  source_type: "statute" | "judgment";
+  court?: string;
+  date?: string;
+  para?: string;
+}
+
+export interface LegalQueryResponse {
+  answer: string;
+  legal_basis: string;
+  citations: LegalCitation[];
+  retrieved_chunks: any[];
+}

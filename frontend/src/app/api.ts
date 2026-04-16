@@ -1,4 +1,4 @@
-import { KnowledgeSource, RetrievedChunk, Citation, Language } from './types';
+import { KnowledgeSource, RetrievedChunk, Citation, Language, LegalQueryResponse } from './types';
 
 const DEFAULT_API_BASE = 'http://127.0.0.1:8000';
 const API_BASE = (import.meta as any).env?.VITE_API_URL || DEFAULT_API_BASE;
@@ -314,4 +314,17 @@ export async function clearHistory(): Promise<void> {
 
 export function notifySidebarRefresh() {
   window.dispatchEvent(new CustomEvent('sources-updated'));
+}
+
+export async function queryLegal(question: string, sourceFilter?: string): Promise<LegalQueryResponse> {
+  const res = await fetch(`${API_BASE}/legal-query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, source_filter: sourceFilter || null, language: "en" })
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to query legal search: ${text}`);
+  }
+  return res.json();
 }

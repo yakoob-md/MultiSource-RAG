@@ -8,6 +8,7 @@ import { AddWebsite } from "./components/screens/AddWebsite";
 import { AddYouTube } from "./components/screens/AddYouTube";
 import { QueryHistory } from "./components/screens/QueryHistory";
 import { Settings } from "./components/screens/Settings";
+import { LegalSearch } from "./components/screens/LegalSearch";
 
 export const router = createBrowserRouter([
   {
@@ -22,6 +23,7 @@ export const router = createBrowserRouter([
       { path: "add-youtube", Component: AddYouTube },
       { path: "history", Component: QueryHistory },
       { path: "settings", Component: Settings },
+      { path: "legal", Component: LegalSearch },
     ],
   },
 ]);
