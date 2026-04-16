@@ -1,9 +1,5 @@
-
-import torch
-print('PyTorch version:', torch.__version__)
-print('CUDA available:', torch.cuda.is_available())
-if torch.cuda.is_available():
-    print('GPU name:', torch.cuda.get_device_name(0))
-    print('CUDA version:', torch.version.cuda)
-else:
-    print('No CUDA GPU — will use CPU')
+import transformers
+import bitsandbytes
+print(f"Transformers: {transformers.__version__}")
+print(f"BitsAndBytes: {bitsandbytes.__version__}")
+print(f"Quantization Available: {transformers.is_bitsandbytes_available()}")

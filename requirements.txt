@@ -39,3 +39,9 @@ rank-bm25
 torch
 
 python-dotenv
+
+# ── Vision & Captioning ─────────────────────────
+transformers>=4.40.0
+bitsandbytes>=0.43.0
+accelerate>=0.29.0
+pillow>=10.3.0

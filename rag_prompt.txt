@@ -1,61 +1,58 @@
-You are adding a new file to a Python RAG system. This is the most GPU-sensitive file in the project.
+You are extending a RAG system's MySQL database. The existing schema has these tables:
+- sources (id, type, title, origin, language, chunk_count, status, created_at)
+- chunks (id, source_id, chunk_text, chunk_index, page_number, timestamp_s, url_ref, created_at)
+- chat_history (id, question, answer, sources_used, created_at)
 
-CRITICAL GPU CONSTRAINTS (read before writing any code):
-- RTX 2050 has 4GB VRAM
-- The embedding model (multilingual-e5-large) uses ~2.5GB VRAM when loaded
-- LLaVA must NEVER run at the same time as the embedding model
-- LLaVA must be loaded in 4-bit quantization (BitsAndBytesConfig, load_in_4bit=True)
-- After captioning EACH image, call torch.cuda.empty_cache() and gc.collect()
-- The model object must be explicitly deleted (del model, del processor) before returning
-- This script runs as a STANDALONE PROCESS, not imported by the web server
+Do NOT modify any existing table. Add ONLY new columns and tables using ALTER TABLE and CREATE TABLE IF NOT EXISTS.
 
-Create ONLY this new file: backend/vision/captioner.py
+Write a file: backend/database/legal_image_schema.sql
 
-The file must:
-1. Have a shebang line: #!/usr/bin/env python3
-2. Imports: torch, gc, json, sys, Path from pathlib
-3. Imports: from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration, BitsAndBytesConfig
-4. Imports: from PIL import Image
-5. Imports: from backend.database.connection import get_connection
-6. Imports: from backend.ingestion.image_loader import get_pending_image_jobs, mark_job_completed, mark_job_failed
+Add these changes:
+1. ALTER TABLE chunks ADD COLUMN IF NOT EXISTS chunk_type ENUM('text','legal','image') DEFAULT 'text';
+2. ALTER TABLE chunks ADD COLUMN IF NOT EXISTS legal_metadata JSON DEFAULT NULL;
+   -- legal_metadata stores: {"case_name":"", "court":"", "date":"", "ipc_sections":[], "citation":""}
+3. ALTER TABLE chunks ADD COLUMN IF NOT EXISTS image_path VARCHAR(500) DEFAULT NULL;
+   -- image_path stores the disk path of the source image for image chunks
 
-7. Define: MODEL_ID = "llava-hf/llava-v1.6-mistral-7b-hf"
+4. CREATE TABLE IF NOT EXISTS legal_sources (
+   id VARCHAR(36) PRIMARY KEY,
+   source_id VARCHAR(36) NOT NULL,
+   doc_type ENUM('statute','judgment','constitution') NOT NULL,
+   court VARCHAR(200) DEFAULT NULL,
+   judgment_date DATE DEFAULT NULL,
+   ipc_sections JSON DEFAULT NULL,
+   petitioner VARCHAR(500) DEFAULT NULL,
+   respondent VARCHAR(500) DEFAULT NULL,
+   FOREIGN KEY (source_id) REFERENCES sources(id) ON DELETE CASCADE
+   );
 
-8. Define function: load_model_int4() -> tuple[processor, model]
-   - Create BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16, bnb_4bit_quant_type="nf4")
-   - Load processor: LlavaNextProcessor.from_pretrained(MODEL_ID)
-   - Load model: LlavaNextForConditionalGeneration.from_pretrained(MODEL_ID, quantization_config=bnb_config, device_map="auto")
-   - Print: f"[Captioner] Model loaded. VRAM used: {torch.cuda.memory_allocated()/1e9:.2f}GB"
-   - Return (processor, model)
+5. CREATE TABLE IF NOT EXISTS image_jobs (
+   id VARCHAR(36) PRIMARY KEY,
+   source_id VARCHAR(36) NOT NULL,
+   image_path VARCHAR(500) NOT NULL,
+   status ENUM('pending','processing','completed','failed') DEFAULT 'pending',
+   caption TEXT DEFAULT NULL,
+   error_message TEXT DEFAULT NULL,
+   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+   );
 
-9. Define function: caption_single_image(image_path: str, processor, model) -> str
-   - Load image: Image.open(image_path).convert("RGB")
-   - Build prompt: "[INST] <image>\nDescribe this image in detail. Include: what objects or people are present, any text visible, the overall context, and what question this image would help answer. Be specific and comprehensive. [/INST]"
-   - Tokenize: inputs = processor(prompt, image, return_tensors="pt").to("cuda")
-   - Generate: output = model.generate(**inputs, max_new_tokens=400, do_sample=False)
-   - Decode: full_text = processor.decode(output[0], skip_special_tokens=True)
-   - Extract only the part after [/INST]: return full_text.split("[/INST]")[-1].strip()
-   - Wrap entire function in try/except, return "Caption generation failed." on any error
+Output only the SQL file. No explanations. Each statement on its own line with semicolon. Include a USE rag_system; at the top.
 
-10. Define function: run_caption_pipeline()
-    - Print "[Captioner] Starting image captioning pipeline"
-    - jobs = get_pending_image_jobs()
-    - Print f"[Captioner] Found {len(jobs)} pending jobs"
-    - If no jobs: print "No jobs. Exiting." and return
-    - Load model: processor, model = load_model_int4()
-    - For each job:
-      * Print f"[Captioner] Processing: {job['image_path']}"
-      * caption = caption_single_image(job['image_path'], processor, model)
-      * mark_job_completed(job['id'], caption)
-      * torch.cuda.empty_cache()
-      * gc.collect()
-    - After ALL jobs: del model; del processor; torch.cuda.empty_cache(); gc.collect()
-    - Print "[Captioner] Done. Model unloaded from VRAM."
 
-11. At bottom of file:
-    if __name__ == "__main__":
-        run_caption_pipeline()
 
-IMPORTANT: This file must NEVER be imported by any FastAPI route or by embedder.py. It runs standalone only.
-Add a comment at the top: # Run this ONLY after the FastAPI server is stopped or the embedding model is confirmed unloaded.
-# Command: python -m backend.vision.captioner
+data/
+  legal_raw/
+    statutes/
+      ipc_1860.pdf
+      crpc_1973.pdf
+      constitution.pdf
+    judgments/
+      sc/
+        2020/
+        2021/
+        2022/
+      hc/
+  legal_processed/   ← output of legal_loader.py
+  images/            ← raw uploaded images
+  image_captions/    ← output of captioner.py
