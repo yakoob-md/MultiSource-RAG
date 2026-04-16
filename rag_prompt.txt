@@ -1,29 +1,95 @@
-You are adding a new API route file to a FastAPI application. Do NOT modify any existing files.
+You are implementing a legal document chunker for an Indian legal RAG system.
 
-Existing system context:
-- backend/main.py already has: app.include_router(sources_router), upload_router, query_router, history_router
-- backend/ingestion/legal_loader.py has: ingest_legal_document(file_path, filename, doc_type) -> dict
-- backend/api/upload.py shows the pattern for file upload endpoints
+INPUT FORMAT:
+You will be reading JSON files from data/legal_processed/.
+Each statute JSON has this structure:
+{
+  "source": "ipc_1860",
+  "doc_type": "statute",
+  "content": [
+    {
+      "section_id": "302",
+      "title": "Punishment for murder",
+      "text": "Whoever commits murder shall be punished with death...",
+      "sub_sections": ["(a) with the intention of causing death"],
+      "explanations": ["Explanation 1.— A person who causes bodily injury..."],
+      "exceptions": ["Exception 1.— When culpable homicide is not murder..."],
+      "amendments": ["Subs. by Act 26 of 1955, s. 2"],
+      "part": "",
+      "chapter": "Chapter XVI: Offences affecting Human Body"
+    }
+  ]
+}
 
-Create ONLY this new file: backend/api/legal_routes.py
+Each judgment JSON has:
+{
+  "source": "state_v_sharma",
+  "doc_type": "judgment",
+  "metadata": {"case_name":"...", "court":"...", "date":"...", "bench":"..."},
+  "cited_sections": ["302", "34"],
+  "cited_cases": ["(2019) 5 SCC 1"],
+  "paragraphs": [
+    {"para_num": 1, "text": "The brief facts..."},
+    {"para_num": 2, "text": "The learned counsel..."}
+  ]
+}
 
-The file must:
-1. Import: APIRouter, UploadFile, File, HTTPException from fastapi; shutil, tempfile, Path
-2. Import: ingest_legal_document from backend.ingestion.legal_loader
-3. Create: router = APIRouter()
+CREATE FILE: backend/ingestion/legal_chunker.py
 
-4. Define POST endpoint: /upload-legal
-   - Accepts: file: UploadFile = File(...), doc_type: str = "judgment"
-   - Validates: file.filename must end in .pdf, else raise HTTPException 400
-   - Validates: doc_type must be one of ['statute','judgment','constitution'], else raise HTTPException 400
-   - Saves file to tempfile (same pattern as existing upload.py)
-   - Calls ingest_legal_document(tmp_path, file.filename, doc_type)
-   - Cleans up tempfile in finally block
-   - Returns: {"message": "Legal document ingested", "source_id": ..., "title": ..., "chunk_count": ..., "doc_type": ...}
+Rules:
+1. For STATUTES:
+   Create one chunk per section. Each chunk dict must have:
+   {
+     "chunk_id": str(uuid4()),
+     "text": "<SECTION 302, IPC 1860 — Punishment for murder>\nWhoever commits murder... [SUB-CLAUSES] (a) with the intention... [EXPLANATION] A person who causes bodily injury... [EXCEPTION] When culpable homicide is not murder...",
+     "metadata": {
+       "source": "ipc_1860",
+       "doc_type": "statute",
+       "section_id": "302",
+       "title": "Punishment for murder",
+       "chapter": "Chapter XVI: Offences affecting Human Body",
+       "has_explanation": true,
+       "has_exception": true,
+       "amendments": ["Subs. by Act 26 of 1955"]
+     }
+   }
+   IMPORTANT: The text field must be self-contained. A reader with NO other context
+   must understand what section and statute this is from. Always prefix with
+   "<SECTION {id}, {statute_name} — {title}>".
+   If section text + sub_sections + explanations exceeds 1000 characters,
+   create multiple chunks, each prefixed identically.
 
-5. Define GET endpoint: /legal-sources
-   - No parameters
-   - Queries MySQL: SELECT s.id, s.title, s.status, s.created_at, ls.doc_type, ls.court, ls.judgment_date FROM sources s JOIN legal_sources ls ON s.id = ls.source_id ORDER BY s.created_at DESC
-   - Returns: {"sources": [...list of rows with datetime converted to isoformat...]}
+2. For JUDGMENTS:
+   Group paragraphs into chunks of 3 consecutive paragraphs.
+   Each chunk dict:
+   {
+     "chunk_id": str(uuid4()),
+     "text": "<JUDGMENT: State v. Sharma, Supreme Court, 15th March 2024, para 1-3>\n[Para 1] text...\n[Para 2] text...\n[Para 3] text...",
+     "metadata": {
+       "source": "state_v_sharma",
+       "doc_type": "judgment",
+       "case_name": "State v. Sharma",
+       "court": "IN THE SUPREME COURT OF INDIA",
+       "date": "15th March 2024",
+       "para_range": "1-3",
+       "cited_sections": ["302", "34"],
+       "cited_cases": ["(2019) 5 SCC 1"]
+     }
+   }
 
-After creating this file, also tell me the exact line to add to backend/main.py to register this router. Do not write the modified main.py -- just provide the two lines: the import and the include_router call.
+3. Define function: chunk_all_documents(processed_dir: Path) -> list[dict]
+   - Walk data/legal_processed/ recursively
+   - For each .json file, detect doc_type and call appropriate chunker
+   - Return flat list of all chunk dicts
+   - Print progress: "Chunking ipc_1860.json → 511 chunks"
+
+4. Save output: data/legal_processed/all_chunks.jsonl
+   One chunk JSON per line (JSONL format for streaming load).
+
+5. Print final: "Total chunks: N  |  Statutes: X  |  Judgments: Y"
+
+CONSTRAINTS:
+- No external libraries except json, uuid, pathlib, re
+- Run as: python -m backend.ingestion.legal_chunker
+- Must handle missing fields gracefully (use .get() with defaults)
+- Do NOT embed — this is chunking only

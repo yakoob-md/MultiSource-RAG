@@ -1,120 +1,180 @@
+import json
+import uuid
 import re
-from backend.ingestion.chunker import chunk_text
+from pathlib import Path
 
-def chunk_statute(text: str) -> list[dict]:
-    # Regex for section headers
-    pattern = re.compile(r"^(Section|Sec\.?)\s+(\d+[A-Z]?)\.", re.MULTILINE | re.IGNORECASE)
-    matches = list(pattern.finditer(text))
+def create_statute_chunks(doc: dict) -> list[dict]:
+    source = doc.get("source", "unknown")
+    if source.lower() == "ipc_1860":
+        statute_name = "IPC 1860"
+    elif source.lower() == "crpc_1973":
+        statute_name = "CrPC 1973"
+    elif "constitution" in source.lower():
+        statute_name = "Constitution of India"
+    else:
+        statute_name = doc.get("full_title", source)
+
+    chunks = []
     
-    if not matches:
-        return [{"text": t, "section_number": None, "section_title": None} for t in chunk_text(text)]
+    for section in doc.get("content", []):
+        sec_id = section.get("section_id", "")
+        title = section.get("title", "")
+        text = section.get("text", "")
+        sub_sections = section.get("sub_sections", [])
+        explanations = section.get("explanations", [])
+        exceptions = section.get("exceptions", [])
+        amendments = section.get("amendments", [])
+        chapter = section.get("chapter", "")
         
-    result = []
-    
-    for i, match in enumerate(matches):
-        section_number = match.group(2)
-        start_idx = match.start()
-        end_idx = matches[i+1].start() if i + 1 < len(matches) else len(text)
+        prefix = f"<SECTION {sec_id}, {statute_name} — {title}>\n"
         
-        section_full_text = text[start_idx:end_idx].strip()
+        body = text if text else ""
+        if sub_sections:
+            body += "\n" + "\n".join(sub_sections)
+        if explanations:
+            body += "\n" + "\n".join(explanations)
+        if exceptions:
+            body += "\n" + "\n".join(exceptions)
+            
+        full_text = prefix + body
         
-        # Extract title from the first line
-        title_line = section_full_text.split("\n")[0]
-        title_line = title_line[match.end() - match.start():].strip() # strip Section X.
+        metadata = {
+            "source": source,
+            "doc_type": doc.get("doc_type", "statute"),
+            "section_id": sec_id,
+            "title": title,
+            "chapter": chapter,
+            "has_explanation": bool(explanations),
+            "has_exception": bool(exceptions),
+            "amendments": amendments
+        }
         
-        title_splits = re.split(r'[—\-]', title_line, maxsplit=1)
-        section_title = title_splits[0].strip() if title_splits else None
-        
-        if len(section_full_text) > 1200:
-            chunks = chunk_text(section_full_text)
-            for sc in chunks:
-                result.append({
-                    "text": sc,
-                    "section_number": section_number,
-                    "section_title": section_title
+        if len(full_text) > 1000:
+            lines = body.split("\n")
+            current_buffer = ""
+            for line in lines:
+                if len(current_buffer) + len(line) + 1 > 800 and current_buffer:
+                    chunks.append({
+                        "chunk_id": str(uuid.uuid4()),
+                        "text": prefix + current_buffer.strip(),
+                        "metadata": metadata
+                    })
+                    current_buffer = line
+                else:
+                    if current_buffer:
+                        current_buffer += "\n" + line
+                    else:
+                        current_buffer = line
+            if current_buffer:
+                chunks.append({
+                    "chunk_id": str(uuid.uuid4()),
+                    "text": prefix + current_buffer.strip(),
+                    "metadata": metadata
                 })
         else:
-            result.append({
-                "text": section_full_text,
-                "section_number": section_number,
-                "section_title": section_title
+            chunks.append({
+                "chunk_id": str(uuid.uuid4()),
+                "text": full_text.strip(),
+                "metadata": metadata
             })
             
-    return result
+    return chunks
 
-def chunk_judgment(text: str) -> list[dict]:
-    # Split paragraphs by [1], [2], etc.
-    parts = re.split(r'\n\s*\[(\d{1,3})\]\s*', text)
+
+def create_judgment_chunks(doc: dict) -> list[dict]:
+    source = doc.get("source", "unknown")
+    meta = doc.get("metadata", {})
+    case_name = meta.get("case_name", "")
+    court = meta.get("court", "")
+    date = meta.get("date", "")
     
-    blocks = []
-    if len(parts) > 1:
-        if parts[0].strip():
-            blocks.append({"text": parts[0].strip(), "num": 0})
-            
-        for i in range(1, len(parts), 2):
-            num = int(parts[i])
-            content = parts[i+1].strip()
-            if content:
-                blocks.append({"text": f"[{num}] {content}", "num": num})
-    else:
-        # Fallback to blank lines
-        raw_blocks = [b.strip() for b in text.split("\n\n") if b.strip()]
-        for i, b in enumerate(raw_blocks):
-            blocks.append({"text": b, "num": i+1})
-            
-    final_chunks = []
-    current_buffer = ""
-    current_num = None
+    cited_sections = doc.get("cited_sections", [])
+    cited_cases = doc.get("cited_cases", [])
+    paragraphs = doc.get("paragraphs", [])
     
-    for block in blocks:
-        block_text = block["text"]
-        b_num = block["num"]
-        
-        # 1. Block > 800
-        if len(block_text) > 800:
-            if current_buffer:
-                final_chunks.append({"text": current_buffer, "paragraph_number": current_num})
-                current_buffer = ""
-                current_num = None
-            
-            sub_chunks = chunk_text(block_text)
-            for sc in sub_chunks:
-                final_chunks.append({"text": sc, "paragraph_number": b_num})
+    chunks = []
+    
+    for i in range(0, len(paragraphs), 3):
+        group = paragraphs[i:i+3]
+        if not group:
             continue
-
-        temp = (current_buffer + "\n\n" + block_text).strip() if current_buffer else block_text
-        
-        # 2. Block < 200
-        if len(temp) < 200:
-            current_buffer = temp
-            if current_num is None:
-                current_num = b_num
-        
-        # 3. Block 200-800
-        elif 200 <= len(temp) <= 800:
-            final_chunks.append({"text": temp, "paragraph_number": current_num if current_num is not None else b_num})
-            current_buffer = ""
-            current_num = None
             
-        # 4. Merging pushes it > 800
+        start_para = group[0].get("para_num", "?")
+        end_para = group[-1].get("para_num", "?")
+        if start_para == end_para:
+            para_range = f"{start_para}"
         else:
-            final_chunks.append({"text": current_buffer, "paragraph_number": current_num})
-            current_buffer = block_text
-            current_num = b_num
-            if len(current_buffer) >= 200:
-                final_chunks.append({"text": current_buffer, "paragraph_number": current_num})
-                current_buffer = ""
-                current_num = None
-                
-    if current_buffer:
-        final_chunks.append({"text": current_buffer, "paragraph_number": current_num})
+            para_range = f"{start_para}-{end_para}"
+            
+        prefix = f"<JUDGMENT: {case_name}, {court}, {date}, para {para_range}>\n"
         
-    return final_chunks
+        texts = []
+        for p in group:
+            texts.append(f"[Para {p.get('para_num', '?')}] {p.get('text', '')}")
+            
+        body = "\n".join(texts)
+        full_text = prefix + body
+        
+        metadata = {
+            "source": source,
+            "doc_type": "judgment",
+            "case_name": case_name,
+            "court": court,
+            "date": date,
+            "para_range": para_range,
+            "cited_sections": cited_sections,
+            "cited_cases": cited_cases
+        }
+        
+        chunks.append({
+            "chunk_id": str(uuid.uuid4()),
+            "text": full_text,
+            "metadata": metadata
+        })
+        
+    return chunks
 
-def chunk_legal_document(text: str, doc_type: str) -> list[dict]:
-    if doc_type in ['statute', 'constitution']:
-        return chunk_statute(text)
-    elif doc_type == 'judgment':
-        return chunk_judgment(text)
+
+def chunk_all_documents(processed_dir: Path) -> list[dict]:
+    all_chunks = []
     
-    return [{"text": t} for t in chunk_text(text)]
+    stats_statutes = 0
+    stats_judgments = 0
+    
+    for json_file in processed_dir.rglob("*.json"):
+        if json_file.name == "all_chunks.jsonl":
+            continue
+            
+        try:
+            with open(json_file, 'r', encoding='utf-8') as f:
+                doc = json.load(f)
+                
+            doc_type = doc.get("doc_type")
+            if doc_type in ['statute', 'constitution']:
+                chunks = create_statute_chunks(doc)
+                stats_statutes += len(chunks)
+            elif doc_type == 'judgment':
+                chunks = create_judgment_chunks(doc)
+                stats_judgments += len(chunks)
+            else:
+                continue
+                
+            print(f"Chunking {json_file.name} → {len(chunks)} chunks")
+            all_chunks.extend(chunks)
+        except Exception as e:
+            print(f"Error processing {json_file.name}: {e}")
+            
+    print(f"Total chunks: {len(all_chunks)}  |  Statutes: {stats_statutes}  |  Judgments: {stats_judgments}")
+    return all_chunks
+
+
+if __name__ == "__main__":
+    processed_dir = Path("data/legal_processed")
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    
+    chunks = chunk_all_documents(processed_dir)
+    
+    out_file = processed_dir / "all_chunks.jsonl"
+    with open(out_file, 'w', encoding='utf-8') as f:
+        for c in chunks:
+            f.write(json.dumps(c, ensure_ascii=False) + "\n")
