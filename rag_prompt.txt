@@ -1,29 +1,59 @@
-You are adding a new API route file to a FastAPI application. Do NOT modify any existing files.
+You are adding new files to a Python RAG system. Do NOT touch any existing files.
 
 Existing system context:
-- backend/main.py already has: app.include_router(sources_router), upload_router, query_router, history_router
-- backend/ingestion/legal_loader.py has: ingest_legal_document(file_path, filename, doc_type) -> dict
-- backend/api/upload.py shows the pattern for file upload endpoints
+- backend/config.py has: BASE_DIR, DATA_DIR, UPLOAD_DIR (all Path objects)
+- backend/database/connection.py has get_connection()
+- data/ directory exists at project root
+- image_jobs table exists with columns: id, source_id, image_path, status, caption, error_message, created_at, updated_at
 
-Create ONLY this new file: backend/api/legal_routes.py
+Create ONLY these two new files:
 
-The file must:
-1. Import: APIRouter, UploadFile, File, HTTPException from fastapi; shutil, tempfile, Path
-2. Import: ingest_legal_document from backend.ingestion.legal_loader
-3. Create: router = APIRouter()
+FILE 1: backend/ingestion/image_loader.py
 
-4. Define POST endpoint: /upload-legal
-   - Accepts: file: UploadFile = File(...), doc_type: str = "judgment"
-   - Validates: file.filename must end in .pdf, else raise HTTPException 400
-   - Validates: doc_type must be one of ['statute','judgment','constitution'], else raise HTTPException 400
-   - Saves file to tempfile (same pattern as existing upload.py)
-   - Calls ingest_legal_document(tmp_path, file.filename, doc_type)
-   - Cleans up tempfile in finally block
-   - Returns: {"message": "Legal document ingested", "source_id": ..., "title": ..., "chunk_count": ..., "doc_type": ...}
+This file handles image upload and job queuing. It does NOT run the vision model.
 
-5. Define GET endpoint: /legal-sources
-   - No parameters
-   - Queries MySQL: SELECT s.id, s.title, s.status, s.created_at, ls.doc_type, ls.court, ls.judgment_date FROM sources s JOIN legal_sources ls ON s.id = ls.source_id ORDER BY s.created_at DESC
-   - Returns: {"sources": [...list of rows with datetime converted to isoformat...]}
+Define:
+1. IMAGES_DIR = DATA_DIR / "images"  (create if not exists using .mkdir(parents=True, exist_ok=True))
+2. ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff'}
 
-After creating this file, also tell me the exact line to add to backend/main.py to register this router. Do not write the modified main.py -- just provide the two lines: the import and the include_router call.
+3. function: save_image_and_queue(file_bytes: bytes, filename: str, source_context: str = "") -> dict
+   - Validate: Path(filename).suffix.lower() must be in ALLOWED_EXTENSIONS, else raise ValueError
+   - Generate: image_id = str(uuid.uuid4())
+   - Save: dest_path = IMAGES_DIR / f"{image_id}{Path(filename).suffix.lower()}"
+   - Write file_bytes to dest_path
+   - Insert into sources table: type='pdf' (use 'image' -- wait, sources.type is ENUM('pdf','url','youtube'). 
+     IMPORTANT: Do NOT insert into sources table. Instead insert directly into image_jobs:
+     id=image_id, source_id=image_id (same for now), image_path=str(dest_path), status='pending'
+   - Return: {"image_id": image_id, "image_path": str(dest_path), "status": "pending", "filename": filename}
+
+4. function: get_pending_image_jobs() -> list[dict]
+   - Query: SELECT id, image_path FROM image_jobs WHERE status = 'pending' ORDER BY created_at ASC
+   - Return list of row dicts
+
+5. function: mark_job_completed(job_id: str, caption: str)
+   - UPDATE image_jobs SET status='completed', caption=caption WHERE id=job_id
+
+6. function: mark_job_failed(job_id: str, error: str)
+   - UPDATE image_jobs SET status='failed', error_message=error WHERE id=job_id
+
+FILE 2: backend/api/image_routes.py
+
+Define:
+1. router = APIRouter()
+
+2. POST /upload-image
+   - Accepts: file: UploadFile = File(...), context: str = ""
+   - Read file bytes: await file.read()
+   - Call save_image_and_queue(file_bytes, file.filename, context)
+   - Return: {"message": "Image queued for processing", "image_id": ..., "status": "pending"}
+   - On ValueError: raise HTTPException(400, detail=str(e))
+
+3. GET /image-jobs
+   - Returns all image_jobs rows: SELECT id, image_path, status, caption, error_message, created_at FROM image_jobs ORDER BY created_at DESC
+   - Convert datetimes to isoformat
+   - Return: {"jobs": [...]}
+
+4. GET /image-jobs/pending-count
+   - Returns: {"count": N} where N = SELECT COUNT(*) FROM image_jobs WHERE status='pending'
+
+After creating these files, tell me the exact two lines to add to backend/main.py (import + include_router). Do not write the full main.py.
