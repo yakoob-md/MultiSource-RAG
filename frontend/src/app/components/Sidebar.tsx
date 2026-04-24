@@ -1,7 +1,8 @@
 import { Link, useLocation } from 'react-router';
 import {
   LayoutDashboard, MessageSquare, Database, FileText,
-  Globe, Youtube, History, Settings as SettingsIcon, Plus, Sun, Moon
+  Globe, Youtube, History, Settings as SettingsIcon, Plus, Sun, Moon,
+  Gavel, Image as ImageIcon
 } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 import { SourceCard } from './SourceCard';
@@ -12,6 +13,8 @@ import { fetchSources } from '../api';
 const navigation = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard },
   { name: 'Ask AI', path: '/ask', icon: MessageSquare },
+  { name: 'Legal AI', path: '/legal', icon: Gavel },
+  { name: 'Vision / Image', path: '/upload-image', icon: ImageIcon },
   { name: 'Knowledge Sources', path: '/sources', icon: Database },
   { name: 'Upload PDF', path: '/upload-pdf', icon: FileText },
   { name: 'Add Website', path: '/add-website', icon: Globe },

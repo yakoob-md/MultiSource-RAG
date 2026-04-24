@@ -1,14 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Search, Filter, FileText, Globe, Youtube, MoreVertical, Trash2, RefreshCw, Eye, Loader2, AlertCircle } from 'lucide-react';
 import { SourceCard } from '../SourceCard';
-import { SourceType, Language, KnowledgeSource } from '../../types';
-import { fetchSources, deleteSource } from '../../api';
+import { SourceType, Language, KnowledgeSource, ImageJob } from '../../types';
+import { fetchSources, deleteSource, fetchImageJobs } from '../../api';
+import { ImageIcon, Clock, CheckCircle2, XCircle } from 'lucide-react';
 
 export function KnowledgeSources() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<SourceType | 'all'>('all');
   const [filterLanguage, setFilterLanguage] = useState<Language | 'all'>('all');
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
+  const [imageJobs, setImageJobs] = useState<ImageJob[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,6 +21,10 @@ export function KnowledgeSources() {
       .then((data) => setSources(data))
       .catch((err: any) => setError(err?.message || 'Failed to load sources.'))
       .finally(() => setIsLoading(false));
+
+    fetchImageJobs()
+      .then(setImageJobs)
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -177,6 +183,58 @@ export function KnowledgeSources() {
                   <div key={source.id} className="relative group">
                     <SourceCard source={source} />
                     <SourceActions sourceId={source.id} onDelete={handleDelete} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Image Jobs Section */}
+          {imageJobs.length > 0 && (
+            <div className="mt-12 pt-12 border-t border-gray-200 dark:border-gray-800">
+              <div className="flex items-center gap-3 mb-6">
+                <ImageIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <h2 className="text-xl text-gray-900 dark:text-[#F8FAFC]">Image Processing Queue</h2>
+                <span className="px-2.5 py-1 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-sm text-indigo-600 dark:text-indigo-400">
+                  {imageJobs.length} Jobs
+                </span>
+              </div>
+              
+              <div className="space-y-3">
+                {imageJobs.map(job => (
+                  <div key={job.id} className="p-4 rounded-xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800">
+                        <ImageIcon className="w-5 h-5 text-gray-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate max-w-md">
+                          {job.image_path.split(/[\\/]/).pop()}
+                        </p>
+                        <p className="text-xs text-gray-500">Queued {new Date(job.created_at).toLocaleString()}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-4">
+                      {job.status === 'pending' && (
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">
+                          <Clock className="w-3 h-3" />
+                          <span className="text-xs font-semibold uppercase tracking-wider">Pending</span>
+                        </div>
+                      )}
+                      {job.status === 'completed' && (
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span className="text-xs font-semibold uppercase tracking-wider">Processed</span>
+                        </div>
+                      )}
+                      {job.status === 'failed' && (
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800/50">
+                          <XCircle className="w-3 h-3" />
+                          <span className="text-xs font-semibold uppercase tracking-wider">Failed</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

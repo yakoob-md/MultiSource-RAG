@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { FileText, Globe, Youtube, Database, Languages, Activity } from 'lucide-react';
 import { KnowledgeSource } from '../../types';
-import { fetchSources } from '../../api';
+import { fetchSources, fetchPendingImageCount } from '../../api';
+import { ImageIcon } from 'lucide-react';
 
 export function Dashboard() {
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingImages, setPendingImages] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,6 +31,12 @@ export function Dashboard() {
           setIsLoading(false);
         }
       });
+
+    fetchPendingImageCount()
+      .then(count => {
+        if (!cancelled) setPendingImages(count);
+      })
+      .catch(() => { });
 
     return () => {
       cancelled = true;
@@ -170,6 +178,22 @@ export function Dashboard() {
             <h3 className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Chunks</h3>
             <p className="text-xs text-gray-500 dark:text-gray-500">
               Stored embeddings
+            </p>
+          </div>
+
+          {/* Vision Queue */}
+          <div className="p-6 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all">
+            <div className="flex items-start justify-between mb-4">
+              <div className="p-3 rounded-xl bg-indigo-500/10">
+                <ImageIcon className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <span className={`text-2xl font-bold ${pendingImages > 0 ? 'text-amber-500' : 'text-gray-900 dark:text-[#F8FAFC]'}`}>
+                {pendingImages}
+              </span>
+            </div>
+            <h3 className="text-sm text-gray-600 dark:text-gray-400 mb-1">Vision Queue</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-500">
+              {pendingImages === 0 ? 'All images processed' : 'Pending LLaVA analysis'}
             </p>
           </div>
         </div>

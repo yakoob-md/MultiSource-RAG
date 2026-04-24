@@ -1,4 +1,4 @@
-export type SourceType = 'pdf' | 'web' | 'youtube';
+export type SourceType = 'pdf' | 'web' | 'youtube' | 'image';
 export type Language = 'EN' | 'HI' | 'TE' | 'ES' | 'FR' | 'DE';
 export type IngestionStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
@@ -73,4 +73,13 @@ export interface LegalQueryResponse {
   legal_basis: string;
   citations: LegalCitation[];
   retrieved_chunks: any[];
+}
+
+export interface ImageJob {
+  id: string;
+  image_path: string;
+  status: IngestionStatus;
+  caption?: string;
+  error_message?: string;
+  created_at: string;
 }

@@ -1,3 +1,6 @@
+
+step 7
+
 You are adding a new file to a Python RAG system. This is the most GPU-sensitive file in the project.
 
 CRITICAL GPU CONSTRAINTS (read before writing any code):

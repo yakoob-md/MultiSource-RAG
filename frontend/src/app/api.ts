@@ -1,4 +1,4 @@
-import { KnowledgeSource, RetrievedChunk, Citation, Language, LegalQueryResponse } from './types';
+import { KnowledgeSource, RetrievedChunk, Citation, Language, LegalQueryResponse, ImageJob } from './types';
 
 const DEFAULT_API_BASE = 'http://127.0.0.1:8000';
 const API_BASE = (import.meta as any).env?.VITE_API_URL || DEFAULT_API_BASE;
@@ -177,6 +177,36 @@ export async function addYouTube(url: string, language: Language = 'EN'): Promis
     status: 'completed',
     origin: url,
   });
+}
+
+// ── Image API ────────────────────────────────────────────────────────────────
+
+export async function uploadImage(file: File, context: string = ""): Promise<{ image_id: string, status: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('context', context);
+
+  const res = await fetch(`${API_BASE}/images/upload-image`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) throw new Error(await res.text() || 'Image Upload failed');
+  return await res.json();
+}
+
+export async function fetchImageJobs(): Promise<ImageJob[]> {
+  const res = await fetch(`${API_BASE}/images/image-jobs`);
+  if (!res.ok) throw new Error(`Failed to fetch image jobs: ${res.statusText}`);
+  const data = await res.json();
+  return data.jobs ?? [];
+}
+
+export async function fetchPendingImageCount(): Promise<number> {
+  const res = await fetch(`${API_BASE}/images/image-jobs/pending-count`);
+  if (!res.ok) throw new Error(`Failed to fetch pending count: ${res.statusText}`);
+  const data = await res.json();
+  return data.count ?? 0;
 }
 
 // ── Query API ───────────────────────────────────────────────────────────────

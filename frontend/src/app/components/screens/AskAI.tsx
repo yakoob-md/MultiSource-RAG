@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Send, RotateCcw, Loader2, FileText, Globe, Youtube,
-  CheckSquare, Square, ChevronDown, ChevronUp, Filter, RotateCcw as RotateIcon
+  CheckSquare, Square, ChevronDown, ChevronUp, Filter, RotateCcw as RotateIcon,
+  Image as ImageIcon
 } from 'lucide-react';
 import { ChatMessage, RetrievedChunk, KnowledgeSource } from '../../types';
 import { queryRag, streamQueryRag, fetchSources } from '../../api';
@@ -142,7 +143,7 @@ export function AskAI() {
   };
 
   const sourceIcon = (type: string) =>
-    type === 'pdf' ? FileText : type === 'web' ? Globe : Youtube;
+    type === 'pdf' ? FileText : type === 'web' ? Globe : type === 'youtube' ? Youtube : ImageIcon;
 
   return (
     <div className="h-full flex">
@@ -441,6 +442,15 @@ export function AskAI() {
                   <span className="text-[9px] font-medium text-gray-400 uppercase tracking-tighter">
                     {chunk.metadata?.page ? `Page ${chunk.metadata.page}` : chunk.metadata?.timestamp ? `@ ${chunk.metadata.timestamp}` : 'Source Segment'}
                   </span>
+                  {chunk.metadata?.ipcSections && chunk.metadata.ipcSections.length > 0 && (
+                    <div className="flex gap-1">
+                      {chunk.metadata.ipcSections.map((sec, idx) => (
+                        <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-500 font-bold border border-red-500/20">
+                          IPC {sec}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             );
