@@ -1,18 +1,26 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
+import shutil
+import tempfile
+from pathlib import Path
+from datetime import datetime, date
+
 from backend.ingestion.image_loader import save_image_and_queue
 from backend.database.connection import get_connection
-import datetime
 
-router = APIRouter(prefix="/images", tags=["images"])
+router = APIRouter()
 
 @router.post("/upload-image")
 async def upload_image(file: UploadFile = File(...), context: str = ""):
     """
-    Endpoint to upload an image and queue it for processing.
+    Endpoint to upload an image and queue it for vision processing.
     """
     try:
-        content = await file.read()
-        result = save_image_and_queue(content, file.filename, context)
+        # Read file bytes
+        file_bytes = await file.read()
+        
+        # Call save and queue logic
+        result = save_image_and_queue(file_bytes, file.filename, context)
+        
         return {
             "message": "Image queued for processing",
             "image_id": result["image_id"],
@@ -21,36 +29,42 @@ async def upload_image(file: UploadFile = File(...), context: str = ""):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 @router.get("/image-jobs")
 async def get_image_jobs():
     """
-    Retrieve all image jobs from the database.
+    Returns all image jobs ordered by creation date.
     """
-    with get_connection() as conn:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT id, image_path, status, caption, error_message, created_at 
-            FROM image_jobs 
-            ORDER BY created_at DESC
-        """)
-        jobs = cursor.fetchall()
-        
-        # Convert datetime objects to ISO format strings for JSON compatibility
-        for job in jobs:
-            if isinstance(job["created_at"], (datetime.datetime, datetime.date)):
-                job["created_at"] = job["created_at"].isoformat()
-                
-        return {"jobs": jobs}
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT id, image_path, status, caption, error_message, created_at 
+                FROM image_jobs 
+                ORDER BY created_at DESC
+            """)
+            rows = cursor.fetchall()
+            
+            # Convert datetimes to isoformat
+            for row in rows:
+                if isinstance(row.get('created_at'), (datetime, date)):
+                    row['created_at'] = row['created_at'].isoformat()
+                    
+            return {"jobs": rows}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/image-jobs/pending-count")
 async def get_pending_count():
     """
-    Get the count of currently pending image jobs.
+    Returns the count of currently pending jobs.
     """
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM image_jobs WHERE status = 'pending'")
-        count = cursor.fetchone()[0]
-        return {"count": count}
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM image_jobs WHERE status = 'pending'")
+            count = cursor.fetchone()[0]
+            return {"count": count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
