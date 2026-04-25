@@ -79,7 +79,7 @@ def retrieve_for_comparison(question: str, analysis: QueryAnalysis, top_k_per_so
             print(f"[MultiRetriever] Error retrieving for {stype}: {e}")
 
     # If no specific types returned results or "any" was used, do a general search
-    if not all_chunks and "any" in source_types:
+    if not all_chunks and "any" in analysis.source_types:
         res = retrieve_single_source(question, top_k=top_k_per_source * 2)
         source_groups.update(res.source_groups)
         all_chunks.extend(res.all_chunks)

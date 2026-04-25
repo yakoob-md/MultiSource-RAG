@@ -3,6 +3,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from backend.rag.retriever import retrieve
 from backend.rag.generator import generate_answer, generate_answer_stream, _build_citations
+from backend.rag.query_classifier import classify_query
+from backend.rag.multi_retriever import multi_retrieve
+from backend.rag.multi_generator import generate_multi_answer
 from backend.database.connection import get_connection
 import uuid
 import json
@@ -22,6 +25,7 @@ class QueryRequest(BaseModel):
     # history is optional — if not sent, behaves exactly like before
     # Frontend sends the last N turns as a list of {role, content} objects
     history   : list[ChatMessageModel] | None = None
+    mode      : str | None = None  # "auto" | "single" | "compare" | "synthesize"
 
 
 # ── Helper: convert Pydantic models → plain dicts for generator ───────────────
@@ -68,15 +72,26 @@ def query(req: QueryRequest):
 
     history = _history_to_dicts(req.history)
 
-    # ── Step 1: Retrieve relevant chunks ──────────────────────────────────────
+    # ── Step 1: Query Analysis & Classification ──────────────────────────────
     try:
-        chunks = retrieve(req.question, req.source_ids)
+        analysis = classify_query(req.question)
+        if req.mode and req.mode != "auto":
+            analysis.intent = {"single": "single_source", "compare": "comparison",
+                                "synthesize": "synthesis"}.get(req.mode, analysis.intent)
+    except Exception as e:
+        print(f"[Query] Classifier warning: {e}")
+        # Fallback will be handled by classify_query returning a safe default
+
+    # ── Step 2: Retrieve relevant chunks ──────────────────────────────────────
+    try:
+        multi_result = multi_retrieve(req.question, analysis)
+        chunks = multi_result.all_chunks
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
 
-    # ── Step 2: Generate answer (with history) ────────────────────────────────
+    # ── Step 3: Generate answer (with history) ────────────────────────────────
     try:
-        result = generate_answer(req.question, chunks, history=history)
+        result = generate_multi_answer(req.question, multi_result, history=history)
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except RuntimeError as e:
@@ -84,7 +99,7 @@ def query(req: QueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
-    # ── Step 3: Save to chat history ──────────────────────────────────────────
+    # ── Step 4: Save to chat history ──────────────────────────────────────────
     chat_id         = str(uuid.uuid4())
     source_ids_used = list({c.source_id for c in chunks})
 
@@ -104,7 +119,7 @@ def query(req: QueryRequest):
     except Exception as e:
         print(f"[Query] Warning: Could not save chat history: {e}")
 
-    # ── Step 4: Build response ────────────────────────────────────────────────
+    # ── Step 5: Build response ────────────────────────────────────────────────
     citations_out = []
     for c in result.citations:
         citations_out.append({
@@ -137,6 +152,7 @@ def query(req: QueryRequest):
         "answer"         : result.answer,
         "citations"      : citations_out,
         "retrievedChunks": chunks_out,
+        "query_intent"   : analysis.intent,
     }
 
 
