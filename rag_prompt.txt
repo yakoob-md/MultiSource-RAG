@@ -1,88 +1,77 @@
-Phase 1 — Unified metadata and schema (build this first, everything depends on it)
-What to build: backend/core/schemas.py with the UnifiedChunkMetadata dataclass. Update all existing loaders to populate it. Update the chunks table to store unified_metadata JSON alongside legal_metadata.
-Expected output: Every chunk in the DB has a unified_metadata JSON column with the same field structure regardless of source type.
-How to test: Query SELECT source_type, JSON_KEYS(unified_metadata) FROM chunks GROUP BY source_type — all rows must return the same set of top-level keys.
-Common mistake: Populating unified_metadata only for new chunks and leaving old ones NULL. Fix: write a migration script that backfills old chunks from their existing legal_metadata column.
+Phase 2 — Query classifier and router
+What to build: backend/rag/query_classifier.py — a lightweight classifier that detects query intent (single-source, comparison, synthesis) and extracts the source constraints the user specified.
+Expected output: Given "compare IPC Section 302 with the 2024 Supreme Court ruling on murder", returns {"intent": "comparison", "sources": ["legal_statute", "legal_judgment"], "topics": ["murder", "302"], "time_filter": "2024"}.
+How to test: Write 10 test queries covering all three intent types and verify correct classification.
+Common mistake: Using a heavy NLP model for classification. A simple keyword + LLM-with-schema approach is far more reliable for the query volume of a legal system.
 
-You are extending a Python RAG system's data model. Do NOT modify any existing file.
+You are adding a query classification module to a Python RAG system.
+Do NOT modify any existing file.
 
-TASK: Create backend/core/schemas.py
+CREATE: backend/rag/query_classifier.py
 
-This file defines the unified metadata contract that ALL chunk types must follow.
-It must contain exactly this dataclass:
+This module classifies incoming queries into one of three intents and extracts
+constraints for retrieval. It must NOT use any ML model — classification is
+done via Groq LLM with structured JSON output.
 
-from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Literal
+IMPORTS: json, re, from groq import Groq, from backend.config import GROQ_API_KEY, GROQ_MODEL
 
-SourceType = Literal["pdf", "web", "youtube", "legal_statute", "legal_judgment", "image"]
-ChunkType  = Literal["text", "legal", "image", "transcript"]
-DocLanguage = Literal["en", "hi", "te", "es", "fr"]
+DEFINE DATACLASS: QueryAnalysis
+Fields:
+    intent          : str      # "single_source" | "comparison" | "synthesis"
+    source_types    : list[str]  # ["legal_statute", "legal_judgment", "web", "youtube", "any"]
+    topics          : list[str]  # extracted topics like ["murder", "302", "IPC"]
+    ipc_sections    : list[str]  # ["302", "304"] if mentioned
+    time_filter     : str | None # "2024" if year mentioned
+    language_hint   : str        # "en" | "hi" — detected from query language
+    requires_compare: bool       # True if "compare", "difference", "vs" in query
+    requires_summary: bool       # True if "common", "all documents", "across" in query
+    source_names    : list[str]  # ["IPC", "CrPC"] if explicitly named
 
-@dataclass
-class UnifiedChunkMetadata:
-    source_id     : str
-    source_type   : SourceType
-    source_title  : str
-    chunk_type    : ChunkType
-    language      : DocLanguage
-    domain        : str                     # "law" | "general" | "medical" | "tech"
-    topics        : list[str]               # extracted topic tags
-    date_added    : str                     # ISO 8601 format
-    section_id    : str | None    = None
-    section_title : str | None    = None
-    statute_name  : str | None    = None
-    chapter       : str | None    = None
-    amendments    : list[str]     = field(default_factory=list)
-    has_exception : bool          = False
-    has_explanation: bool         = False
-    case_name     : str | None    = None
-    court         : str | None    = None
-    judgment_date : str | None    = None
-    cited_sections: list[str]     = field(default_factory=list)
-    cited_cases   : list[str]     = field(default_factory=list)
-    para_range    : str | None    = None
-    url           : str | None    = None
-    timestamp_s   : int | None    = None
-    image_path    : str | None    = None
-    caption_model : str | None    = None
+DEFINE FUNCTION: classify_query(question: str) -> QueryAnalysis
+    Build this system prompt for Groq:
+    """
+    Classify this legal query. Return ONLY valid JSON with these exact keys:
+    {
+      "intent": "single_source" | "comparison" | "synthesis",
+      "source_types": list of "legal_statute"|"legal_judgment"|"web"|"youtube"|"any",
+      "topics": list of topic strings,
+      "ipc_sections": list of section numbers as strings,
+      "time_filter": year string or null,
+      "language_hint": "en" or "hi",
+      "requires_compare": boolean,
+      "requires_summary": boolean,
+      "source_names": list of named sources like ["IPC", "CrPC", "Constitution"]
+    }
 
-    def to_json(self) -> str:
-        import json, dataclasses
-        return json.dumps(dataclasses.asdict(self), ensure_ascii=False)
+    Intent rules:
+    - single_source: factual question about one law/concept
+    - comparison: explicitly asks to compare, contrast, or find differences between two things
+    - synthesis: asks for common themes, summary across multiple documents, or general overview
 
-    @classmethod
-    def from_json(cls, s: str) -> UnifiedChunkMetadata:
-        import json
-        return cls(**json.loads(s))
+    Query: {question}
+    """
+    Call Groq with max_tokens=300, stream=False.
+    Parse response as JSON. If parsing fails, return safe default:
+    QueryAnalysis(intent="single_source", source_types=["any"], topics=[question[:50]], ...)
 
-    def to_filter_dict(self) -> dict:
-        """Returns only the fields useful for source filtering."""
-        return {
-            "source_id"   : self.source_id,
-            "source_type" : self.source_type,
-            "chunk_type"  : self.chunk_type,
-            "domain"      : self.domain,
-            "language"    : self.language,
-            "section_id"  : self.section_id,
-            "case_name"   : self.case_name,
-            "court"       : self.court,
-        }
+DEFINE FUNCTION: extract_source_filter(analysis: QueryAnalysis, available_source_ids: list[str]) -> list[str] | None
+    - If analysis.source_types == ["any"]: return None (search everything)
+    - If analysis.source_names mentions "IPC" or "CrPC" or "Constitution": 
+      query MySQL for source IDs where title LIKE '%IPC%' etc.
+      Return those IDs.
+    - Else return None
+    Requires get_connection import from backend.database.connection
 
-ALSO create: backend/database/migration_001_unified_metadata.sql
+The function must have a fallback: if Groq call fails for any reason,
+return QueryAnalysis(intent="single_source", source_types=["any"], topics=[], 
+ipc_sections=[], time_filter=None, language_hint="en", 
+requires_compare=False, requires_summary=False, source_names=[])
 
-Contents:
-USE rag_system;
-ALTER TABLE chunks ADD COLUMN IF NOT EXISTS unified_metadata JSON DEFAULT NULL;
-CREATE INDEX IF NOT EXISTS idx_chunks_source_type ON chunks((unified_metadata->>'$.source_type'));
-CREATE INDEX IF NOT EXISTS idx_chunks_domain ON chunks((unified_metadata->>'$.domain'));
-CREATE INDEX IF NOT EXISTS idx_chunks_section ON chunks((unified_metadata->>'$.section_id'));
-
-Do NOT create backend/core/__init__.py or any other file.
-Output only the two files, no explanations.
+Do NOT cache results. Every query must be freshly classified.
 
 Validation checklist:
 
-python -c "from backend.core.schemas import UnifiedChunkMetadata; m = UnifiedChunkMetadata(source_id='x', source_type='legal_statute', source_title='IPC', chunk_type='legal', language='en', domain='law', topics=['murder'], date_added='2024-01-01'); print(m.to_json())" — must print valid JSON
-ALTER TABLE runs without error on existing DB
-to_filter_dict() returns only the 8 keys listed
+Test query: "What is IPC Section 302?" → intent must be "single_source", ipc_sections must contain "302"
+Test query: "Compare what IPC says about murder vs the 2024 SC judgment" → intent must be "comparison", requires_compare must be True
+Test query: "What is common across all uploaded legal documents?" → intent must be "synthesis", requires_summary must be True
+Groq failure must return safe default without raising exception
