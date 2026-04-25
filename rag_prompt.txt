@@ -1,43 +1,100 @@
-Phase 5 — Unified query endpoint
-What to build: Update backend/api/query.py to route through the new pipeline. This is the only existing file that gets modified.
+🚀 PHASE A — DATASET GENERATION
+🎯 Goal:
 
-You are modifying ONE existing file in a FastAPI system.
-File: backend/api/query.py
+Create training data from your existing RAG system
 
-CURRENT: The /query endpoint calls retrieve() then generate_answer() directly.
+🧩 What Claude wants (decoded)
 
-CHANGES REQUIRED (surgical — minimum diff):
+From your file:
 
-1. Add these imports at the top of the existing imports block:
-   from backend.rag.query_classifier import classify_query
-   from backend.rag.multi_retriever import multi_retrieve
-   from backend.rag.multi_generator import generate_multi_answer
+Read chunks from DB
+Generate question using LLM
+Generate answer using your RAG
+Save in Alpaca format
 
-2. Modify the QueryRequest Pydantic model to add ONE new optional field:
-   mode: str | None = None  # "auto" | "single" | "compare" | "synthesize"
-   If mode is None or "auto", use the classifier. Otherwise force that mode.
+🤖 GEMINI ROLE
 
-3. Inside the /query endpoint function body, after the existing validation check,
-   REPLACE the two lines:
-       chunks = retrieve(req.question, req.source_ids)
-       result = generate_answer(req.question, chunks, history=history)
-   WITH these lines (preserve all existing error handling around them):
-       analysis = classify_query(req.question)
-       if req.mode and req.mode != "auto":
-           analysis.intent = {"single": "single_source", "compare": "comparison",
-                               "synthesize": "synthesis"}.get(req.mode, analysis.intent)
-       multi_result = multi_retrieve(req.question, analysis)
-       result = generate_multi_answer(req.question, multi_result, history=history)
+👉 Write script:
+scripts/generate_training_data.py
 
-4. In the response building section, add one field to the returned dict:
-   "query_intent": analysis.intent
+✍️ PROMPT FOR GEMINI (use this EXACT)
+Writing
 
-DO NOT change anything else. Do NOT touch /query-stream. Do NOT change imports
-that are not listed above. Show me the full modified file.
+You are implementing a dataset generation script for a legal RAG system.
 
-Validation checklist:
+STRICT RULES:
 
-POST /query with {"question": "What is IPC 302?", "mode": "auto"} returns query_intent: "single_source"
-POST /query with {"question": "compare IPC 302 with SC ruling", "mode": "auto"} returns query_intent: "comparison"
-POST /query with {"question": "anything", "mode": "compare"} forces query_intent: "comparison" regardless of classifier output
-Existing streaming endpoint /query-stream is completely unchanged
+Do NOT modify any existing file
+Only create: scripts/generate_training_data.py
+Follow instructions EXACTLY
+
+REQUIREMENTS:
+
+Connect to MySQL database
+Run query:
+SELECT c.chunk_text, c.unified_metadata, s.title
+FROM chunks c
+JOIN sources s ON c.source_id = s.id
+WHERE c.chunk_type = 'legal' AND c.unified_metadata IS NOT NULL
+LIMIT 2000
+For each row:
+Extract chunk_text, metadata, title
+Implement function:
+generate_question_for_chunk(text, metadata)
+
+Call Groq API:
+Prompt:
+"Given this legal text, generate ONE specific factual question a person might ask.
+Return ONLY the question.
+
+Legal text:
+{text[:500]}"
+
+Return string
+
+Implement function:
+call_groq_for_ideal_answer(question, context)
+Use same structured legal prompt used in generator
+Return formatted legal answer
+Build training sample:
+{
+"instruction": "You are a legal information assistant for Indian law. Answer ONLY using provided context.",
+"input": f"CONTEXT:\n{context}\n\nQUESTION: {question}",
+"output": answer
+}
+Save each entry to:
+data/training/legal_rag_dataset.jsonl
+
+(append mode, one JSON per line)
+
+Add:
+progress print every 50 samples
+sleep(1) between API calls
+At end:
+print total examples generated
+
+OUTPUT REQUIREMENTS:
+
+Full working code
+No placeholders
+Proper imports
+Error handling for API failures
+
+After writing code:
+
+Provide:
+
+How to run it
+Expected output file structure
+Sample JSON entry
+✅ AFTER GEMINI OUTPUTS
+YOU TEST:
+
+Run:
+
+python scripts/generate_training_data.py
+✔️ VALIDATION CHECK
+File created? → legal_rag_dataset.jsonl
+Entries present? → YES
+Format correct? → YES
+Answers structured? → YES
