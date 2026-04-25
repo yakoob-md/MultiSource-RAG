@@ -14,7 +14,7 @@ from backend.database.connection import get_connection
 
 # --- CONFIGURATION ---
 # Switching to a smaller model (8B) to resolve rate limit issues (higher TPD/RPD)
-GENERATION_MODEL = "llama-3-8b-8192" 
+GENERATION_MODEL = "llama-3.1-8b-instant" 
 OUTPUT_FILE = Path("data/training/legal_rag_dataset.jsonl")
 OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
 
