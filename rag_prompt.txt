@@ -1,56 +1,43 @@
-Phase 3 — Multi-source retrieval engine
-What to build: backend/rag/multi_retriever.py — wraps your existing retrieve() with three execution modes matching the three query intents.
+Phase 5 — Unified query endpoint
+What to build: Update backend/api/query.py to route through the new pipeline. This is the only existing file that gets modified.
 
-You are adding a multi-source retrieval module. Do NOT modify retriever.py.
+You are modifying ONE existing file in a FastAPI system.
+File: backend/api/query.py
 
-EXISTING: backend/rag/retriever.py has retrieve(question, source_ids) -> list[RetrievedChunk]
-EXISTING: backend/rag/query_classifier.py has QueryAnalysis dataclass
+CURRENT: The /query endpoint calls retrieve() then generate_answer() directly.
 
-CREATE: backend/rag/multi_retriever.py
+CHANGES REQUIRED (surgical — minimum diff):
 
-IMPORTS: from backend.rag.retriever import retrieve, RetrievedChunk
-         from backend.rag.query_classifier import QueryAnalysis
-         from backend.database.connection import get_connection
-         import json
+1. Add these imports at the top of the existing imports block:
+   from backend.rag.query_classifier import classify_query
+   from backend.rag.multi_retriever import multi_retrieve
+   from backend.rag.multi_generator import generate_multi_answer
 
-DEFINE DATACLASS: MultiSourceResult
-    query_intent     : str
-    source_groups    : dict[str, list[RetrievedChunk]]  # source_title -> chunks
-    all_chunks       : list[RetrievedChunk]
-    source_count     : int
+2. Modify the QueryRequest Pydantic model to add ONE new optional field:
+   mode: str | None = None  # "auto" | "single" | "compare" | "synthesize"
+   If mode is None or "auto", use the classifier. Otherwise force that mode.
 
-DEFINE FUNCTION: retrieve_single_source(question, source_ids, top_k=8) -> MultiSourceResult
-    Call retrieve(question, source_ids) once.
-    Group result by source_title.
-    Return MultiSourceResult(query_intent="single_source", source_groups={...}, all_chunks=[...], source_count=1)
+3. Inside the /query endpoint function body, after the existing validation check,
+   REPLACE the two lines:
+       chunks = retrieve(req.question, req.source_ids)
+       result = generate_answer(req.question, chunks, history=history)
+   WITH these lines (preserve all existing error handling around them):
+       analysis = classify_query(req.question)
+       if req.mode and req.mode != "auto":
+           analysis.intent = {"single": "single_source", "compare": "comparison",
+                               "synthesize": "synthesis"}.get(req.mode, analysis.intent)
+       multi_result = multi_retrieve(req.question, analysis)
+       result = generate_multi_answer(req.question, multi_result, history=history)
 
-DEFINE FUNCTION: retrieve_for_comparison(question, analysis: QueryAnalysis, top_k_per_source=5) -> MultiSourceResult
-    This must retrieve independently from EACH source type in analysis.source_types.
-    For each source_type:
-        1. Query MySQL: SELECT id FROM sources WHERE ... (use source type + name matching)
-        2. Call retrieve(question, source_ids=[those ids], top_k_per_source)
-        3. Store as source_groups[source_title]
-    If a source type returns 0 results, log warning but continue.
-    Return MultiSourceResult with all groups populated.
-    IMPORTANT: Do NOT merge chunks from different sources before returning.
-    Keep them grouped so generator can compare them independently.
+4. In the response building section, add one field to the returned dict:
+   "query_intent": analysis.intent
 
-DEFINE FUNCTION: retrieve_for_synthesis(question, top_k=16) -> MultiSourceResult
-    Call retrieve(question, source_ids=None, top_k=top_k) — broad search across all.
-    Group by source_title.
-    Cap each source at top_k // len(unique_sources) chunks to ensure balance.
-    Return MultiSourceResult with balanced source_groups.
+DO NOT change anything else. Do NOT touch /query-stream. Do NOT change imports
+that are not listed above. Show me the full modified file.
 
-DEFINE FUNCTION: multi_retrieve(question: str, analysis: QueryAnalysis) -> MultiSourceResult
-    Route based on analysis.intent:
-    - "single_source" -> retrieve_single_source(question, source_ids from analysis)
-    - "comparison"    -> retrieve_for_comparison(question, analysis)
-    - "synthesis"     -> retrieve_for_synthesis(question)
-    Log: print(f"[MultiRetriever] intent={analysis.intent} | sources={analysis.source_types}")
+Validation checklist:
 
-    Validation checklist:
-
-Single source query returns source_count == 1
-Comparison query returns source_count >= 2 with distinct source_title keys in source_groups
-Synthesis query returns balanced chunks (no single source dominates >60% of results)
-All three functions handle empty retrieval results without raising exceptions
+POST /query with {"question": "What is IPC 302?", "mode": "auto"} returns query_intent: "single_source"
+POST /query with {"question": "compare IPC 302 with SC ruling", "mode": "auto"} returns query_intent: "comparison"
+POST /query with {"question": "anything", "mode": "compare"} forces query_intent: "comparison" regardless of classifier output
+Existing streaming endpoint /query-stream is completely unchanged
