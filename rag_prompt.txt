@@ -1,77 +1,56 @@
-Phase 2 — Query classifier and router
-What to build: backend/rag/query_classifier.py — a lightweight classifier that detects query intent (single-source, comparison, synthesis) and extracts the source constraints the user specified.
-Expected output: Given "compare IPC Section 302 with the 2024 Supreme Court ruling on murder", returns {"intent": "comparison", "sources": ["legal_statute", "legal_judgment"], "topics": ["murder", "302"], "time_filter": "2024"}.
-How to test: Write 10 test queries covering all three intent types and verify correct classification.
-Common mistake: Using a heavy NLP model for classification. A simple keyword + LLM-with-schema approach is far more reliable for the query volume of a legal system.
+Phase 3 — Multi-source retrieval engine
+What to build: backend/rag/multi_retriever.py — wraps your existing retrieve() with three execution modes matching the three query intents.
 
-You are adding a query classification module to a Python RAG system.
-Do NOT modify any existing file.
+You are adding a multi-source retrieval module. Do NOT modify retriever.py.
 
-CREATE: backend/rag/query_classifier.py
+EXISTING: backend/rag/retriever.py has retrieve(question, source_ids) -> list[RetrievedChunk]
+EXISTING: backend/rag/query_classifier.py has QueryAnalysis dataclass
 
-This module classifies incoming queries into one of three intents and extracts
-constraints for retrieval. It must NOT use any ML model — classification is
-done via Groq LLM with structured JSON output.
+CREATE: backend/rag/multi_retriever.py
 
-IMPORTS: json, re, from groq import Groq, from backend.config import GROQ_API_KEY, GROQ_MODEL
+IMPORTS: from backend.rag.retriever import retrieve, RetrievedChunk
+         from backend.rag.query_classifier import QueryAnalysis
+         from backend.database.connection import get_connection
+         import json
 
-DEFINE DATACLASS: QueryAnalysis
-Fields:
-    intent          : str      # "single_source" | "comparison" | "synthesis"
-    source_types    : list[str]  # ["legal_statute", "legal_judgment", "web", "youtube", "any"]
-    topics          : list[str]  # extracted topics like ["murder", "302", "IPC"]
-    ipc_sections    : list[str]  # ["302", "304"] if mentioned
-    time_filter     : str | None # "2024" if year mentioned
-    language_hint   : str        # "en" | "hi" — detected from query language
-    requires_compare: bool       # True if "compare", "difference", "vs" in query
-    requires_summary: bool       # True if "common", "all documents", "across" in query
-    source_names    : list[str]  # ["IPC", "CrPC"] if explicitly named
+DEFINE DATACLASS: MultiSourceResult
+    query_intent     : str
+    source_groups    : dict[str, list[RetrievedChunk]]  # source_title -> chunks
+    all_chunks       : list[RetrievedChunk]
+    source_count     : int
 
-DEFINE FUNCTION: classify_query(question: str) -> QueryAnalysis
-    Build this system prompt for Groq:
-    """
-    Classify this legal query. Return ONLY valid JSON with these exact keys:
-    {
-      "intent": "single_source" | "comparison" | "synthesis",
-      "source_types": list of "legal_statute"|"legal_judgment"|"web"|"youtube"|"any",
-      "topics": list of topic strings,
-      "ipc_sections": list of section numbers as strings,
-      "time_filter": year string or null,
-      "language_hint": "en" or "hi",
-      "requires_compare": boolean,
-      "requires_summary": boolean,
-      "source_names": list of named sources like ["IPC", "CrPC", "Constitution"]
-    }
+DEFINE FUNCTION: retrieve_single_source(question, source_ids, top_k=8) -> MultiSourceResult
+    Call retrieve(question, source_ids) once.
+    Group result by source_title.
+    Return MultiSourceResult(query_intent="single_source", source_groups={...}, all_chunks=[...], source_count=1)
 
-    Intent rules:
-    - single_source: factual question about one law/concept
-    - comparison: explicitly asks to compare, contrast, or find differences between two things
-    - synthesis: asks for common themes, summary across multiple documents, or general overview
+DEFINE FUNCTION: retrieve_for_comparison(question, analysis: QueryAnalysis, top_k_per_source=5) -> MultiSourceResult
+    This must retrieve independently from EACH source type in analysis.source_types.
+    For each source_type:
+        1. Query MySQL: SELECT id FROM sources WHERE ... (use source type + name matching)
+        2. Call retrieve(question, source_ids=[those ids], top_k_per_source)
+        3. Store as source_groups[source_title]
+    If a source type returns 0 results, log warning but continue.
+    Return MultiSourceResult with all groups populated.
+    IMPORTANT: Do NOT merge chunks from different sources before returning.
+    Keep them grouped so generator can compare them independently.
 
-    Query: {question}
-    """
-    Call Groq with max_tokens=300, stream=False.
-    Parse response as JSON. If parsing fails, return safe default:
-    QueryAnalysis(intent="single_source", source_types=["any"], topics=[question[:50]], ...)
+DEFINE FUNCTION: retrieve_for_synthesis(question, top_k=16) -> MultiSourceResult
+    Call retrieve(question, source_ids=None, top_k=top_k) — broad search across all.
+    Group by source_title.
+    Cap each source at top_k // len(unique_sources) chunks to ensure balance.
+    Return MultiSourceResult with balanced source_groups.
 
-DEFINE FUNCTION: extract_source_filter(analysis: QueryAnalysis, available_source_ids: list[str]) -> list[str] | None
-    - If analysis.source_types == ["any"]: return None (search everything)
-    - If analysis.source_names mentions "IPC" or "CrPC" or "Constitution": 
-      query MySQL for source IDs where title LIKE '%IPC%' etc.
-      Return those IDs.
-    - Else return None
-    Requires get_connection import from backend.database.connection
+DEFINE FUNCTION: multi_retrieve(question: str, analysis: QueryAnalysis) -> MultiSourceResult
+    Route based on analysis.intent:
+    - "single_source" -> retrieve_single_source(question, source_ids from analysis)
+    - "comparison"    -> retrieve_for_comparison(question, analysis)
+    - "synthesis"     -> retrieve_for_synthesis(question)
+    Log: print(f"[MultiRetriever] intent={analysis.intent} | sources={analysis.source_types}")
 
-The function must have a fallback: if Groq call fails for any reason,
-return QueryAnalysis(intent="single_source", source_types=["any"], topics=[], 
-ipc_sections=[], time_filter=None, language_hint="en", 
-requires_compare=False, requires_summary=False, source_names=[])
+    Validation checklist:
 
-Do NOT cache results. Every query must be freshly classified.
-
-Validation checklist:
-
-Test query: "What is IPC Section 302?" → intent must be "single_source", ipc_sections must contain "302"
-Test query: "Compare what IPC says about murder vs the 2024 SC judgment" → intent must be "comparison", requires_compare must be True
-Test query: "What is common across all uploaded legal documents?" → intent must be "synthesis", requires_summary must be True
-Groq failure must return safe default without raising exception
+Single source query returns source_count == 1
+Comparison query returns source_count >= 2 with distinct source_title keys in source_groups
+Synthesis query returns balanced chunks (no single source dominates >60% of results)
+All three functions handle empty retrieval results without raising exceptions

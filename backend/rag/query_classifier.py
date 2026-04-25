@@ -91,13 +91,8 @@ def extract_source_filter(analysis: QueryAnalysis, available_source_ids: list[st
             with get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
                 for name in analysis.source_names:
-                    # Search in legal_sources and sources tables
-                    query = "SELECT id FROM legal_sources WHERE title LIKE %s"
-                    cursor.execute(query, (f"%{name}%",))
-                    rows = cursor.fetchall()
-                    source_ids.extend([row['id'] for row in rows])
-                    
-                    query = "SELECT id FROM sources WHERE filename LIKE %s"
+                    # Search in sources table for title matches
+                    query = "SELECT id FROM sources WHERE title LIKE %s"
                     cursor.execute(query, (f"%{name}%",))
                     rows = cursor.fetchall()
                     source_ids.extend([row['id'] for row in rows])
