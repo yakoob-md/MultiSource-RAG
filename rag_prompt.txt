@@ -1,64 +1,88 @@
+Phase 1 — Unified metadata and schema (build this first, everything depends on it)
+What to build: backend/core/schemas.py with the UnifiedChunkMetadata dataclass. Update all existing loaders to populate it. Update the chunks table to store unified_metadata JSON alongside legal_metadata.
+Expected output: Every chunk in the DB has a unified_metadata JSON column with the same field structure regardless of source type.
+How to test: Query SELECT source_type, JSON_KEYS(unified_metadata) FROM chunks GROUP BY source_type — all rows must return the same set of top-level keys.
+Common mistake: Populating unified_metadata only for new chunks and leaving old ones NULL. Fix: write a migration script that backfills old chunks from their existing legal_metadata column.
 
-step 7
+You are extending a Python RAG system's data model. Do NOT modify any existing file.
 
-You are adding a new file to a Python RAG system. This is the most GPU-sensitive file in the project.
+TASK: Create backend/core/schemas.py
 
-CRITICAL GPU CONSTRAINTS (read before writing any code):
-- RTX 2050 has 4GB VRAM
-- The embedding model (multilingual-e5-large) uses ~2.5GB VRAM when loaded
-- LLaVA must NEVER run at the same time as the embedding model
-- LLaVA must be loaded in 4-bit quantization (BitsAndBytesConfig, load_in_4bit=True)
-- After captioning EACH image, call torch.cuda.empty_cache() and gc.collect()
-- The model object must be explicitly deleted (del model, del processor) before returning
-- This script runs as a STANDALONE PROCESS, not imported by the web server
+This file defines the unified metadata contract that ALL chunk types must follow.
+It must contain exactly this dataclass:
 
-Create ONLY this new file: backend/vision/captioner.py
+from __future__ import annotations
+from dataclasses import dataclass, field
+from typing import Literal
 
-The file must:
-1. Have a shebang line: #!/usr/bin/env python3
-2. Imports: torch, gc, json, sys, Path from pathlib
-3. Imports: from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration, BitsAndBytesConfig
-4. Imports: from PIL import Image
-5. Imports: from backend.database.connection import get_connection
-6. Imports: from backend.ingestion.image_loader import get_pending_image_jobs, mark_job_completed, mark_job_failed
+SourceType = Literal["pdf", "web", "youtube", "legal_statute", "legal_judgment", "image"]
+ChunkType  = Literal["text", "legal", "image", "transcript"]
+DocLanguage = Literal["en", "hi", "te", "es", "fr"]
 
-7. Define: MODEL_ID = "llava-hf/llava-v1.6-mistral-7b-hf"
+@dataclass
+class UnifiedChunkMetadata:
+    source_id     : str
+    source_type   : SourceType
+    source_title  : str
+    chunk_type    : ChunkType
+    language      : DocLanguage
+    domain        : str                     # "law" | "general" | "medical" | "tech"
+    topics        : list[str]               # extracted topic tags
+    date_added    : str                     # ISO 8601 format
+    section_id    : str | None    = None
+    section_title : str | None    = None
+    statute_name  : str | None    = None
+    chapter       : str | None    = None
+    amendments    : list[str]     = field(default_factory=list)
+    has_exception : bool          = False
+    has_explanation: bool         = False
+    case_name     : str | None    = None
+    court         : str | None    = None
+    judgment_date : str | None    = None
+    cited_sections: list[str]     = field(default_factory=list)
+    cited_cases   : list[str]     = field(default_factory=list)
+    para_range    : str | None    = None
+    url           : str | None    = None
+    timestamp_s   : int | None    = None
+    image_path    : str | None    = None
+    caption_model : str | None    = None
 
-8. Define function: load_model_int4() -> tuple[processor, model]
-   - Create BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16, bnb_4bit_quant_type="nf4")
-   - Load processor: LlavaNextProcessor.from_pretrained(MODEL_ID)
-   - Load model: LlavaNextForConditionalGeneration.from_pretrained(MODEL_ID, quantization_config=bnb_config, device_map="auto")
-   - Print: f"[Captioner] Model loaded. VRAM used: {torch.cuda.memory_allocated()/1e9:.2f}GB"
-   - Return (processor, model)
+    def to_json(self) -> str:
+        import json, dataclasses
+        return json.dumps(dataclasses.asdict(self), ensure_ascii=False)
 
-9. Define function: caption_single_image(image_path: str, processor, model) -> str
-   - Load image: Image.open(image_path).convert("RGB")
-   - Build prompt: "[INST] <image>\nDescribe this image in detail. Include: what objects or people are present, any text visible, the overall context, and what question this image would help answer. Be specific and comprehensive. [/INST]"
-   - Tokenize: inputs = processor(prompt, image, return_tensors="pt").to("cuda")
-   - Generate: output = model.generate(**inputs, max_new_tokens=400, do_sample=False)
-   - Decode: full_text = processor.decode(output[0], skip_special_tokens=True)
-   - Extract only the part after [/INST]: return full_text.split("[/INST]")[-1].strip()
-   - Wrap entire function in try/except, return "Caption generation failed." on any error
+    @classmethod
+    def from_json(cls, s: str) -> UnifiedChunkMetadata:
+        import json
+        return cls(**json.loads(s))
 
-10. Define function: run_caption_pipeline()
-    - Print "[Captioner] Starting image captioning pipeline"
-    - jobs = get_pending_image_jobs()
-    - Print f"[Captioner] Found {len(jobs)} pending jobs"
-    - If no jobs: print "No jobs. Exiting." and return
-    - Load model: processor, model = load_model_int4()
-    - For each job:
-      * Print f"[Captioner] Processing: {job['image_path']}"
-      * caption = caption_single_image(job['image_path'], processor, model)
-      * mark_job_completed(job['id'], caption)
-      * torch.cuda.empty_cache()
-      * gc.collect()
-    - After ALL jobs: del model; del processor; torch.cuda.empty_cache(); gc.collect()
-    - Print "[Captioner] Done. Model unloaded from VRAM."
+    def to_filter_dict(self) -> dict:
+        """Returns only the fields useful for source filtering."""
+        return {
+            "source_id"   : self.source_id,
+            "source_type" : self.source_type,
+            "chunk_type"  : self.chunk_type,
+            "domain"      : self.domain,
+            "language"    : self.language,
+            "section_id"  : self.section_id,
+            "case_name"   : self.case_name,
+            "court"       : self.court,
+        }
 
-11. At bottom of file:
-    if __name__ == "__main__":
-        run_caption_pipeline()
+ALSO create: backend/database/migration_001_unified_metadata.sql
 
-IMPORTANT: This file must NEVER be imported by any FastAPI route or by embedder.py. It runs standalone only.
-Add a comment at the top: # Run this ONLY after the FastAPI server is stopped or the embedding model is confirmed unloaded.
-# Command: python -m backend.vision.captioner
+Contents:
+USE rag_system;
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS unified_metadata JSON DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS idx_chunks_source_type ON chunks((unified_metadata->>'$.source_type'));
+CREATE INDEX IF NOT EXISTS idx_chunks_domain ON chunks((unified_metadata->>'$.domain'));
+CREATE INDEX IF NOT EXISTS idx_chunks_section ON chunks((unified_metadata->>'$.section_id'));
+
+Do NOT create backend/core/__init__.py or any other file.
+Output only the two files, no explanations.
+
+Validation checklist:
+
+python -c "from backend.core.schemas import UnifiedChunkMetadata; m = UnifiedChunkMetadata(source_id='x', source_type='legal_statute', source_title='IPC', chunk_type='legal', language='en', domain='law', topics=['murder'], date_added='2024-01-01'); print(m.to_json())" — must print valid JSON
+ALTER TABLE runs without error on existing DB
+to_filter_dict() returns only the 8 keys listed
