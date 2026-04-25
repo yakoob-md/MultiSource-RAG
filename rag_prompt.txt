@@ -1,100 +1,145 @@
-🚀 PHASE A — DATASET GENERATION
-🎯 Goal:
+You are a strict dataset quality evaluator for a legal AI fine-tuning pipeline.
 
-Create training data from your existing RAG system
+Your task is to FILTER and SELECT only HIGH-QUALITY training samples from a dataset.
 
-🧩 What Claude wants (decoded)
+INPUT:
+You will receive multiple JSON objects, each containing:
 
-From your file:
+* instruction
+* input (with CONTEXT + QUESTION)
+* output (ANSWER + LEGAL BASIS + CITATIONS)
 
-Read chunks from DB
-Generate question using LLM
-Generate answer using your RAG
-Save in Alpaca format
+---
 
-🤖 GEMINI ROLE
+## 🎯 GOAL
 
-👉 Write script:
-scripts/generate_training_data.py
+Select ONLY samples that are suitable for fine-tuning a legal reasoning model.
 
-✍️ PROMPT FOR GEMINI (use this EXACT)
-Writing
+Reject aggressively. It is better to discard data than to include low-quality samples.
 
-You are implementing a dataset generation script for a legal RAG system.
+---
 
-STRICT RULES:
+## 🔍 EVALUATION CRITERIA (STRICT)
 
-Do NOT modify any existing file
-Only create: scripts/generate_training_data.py
-Follow instructions EXACTLY
+For EACH sample, evaluate:
 
-REQUIREMENTS:
+### 1. Question Quality
 
-Connect to MySQL database
-Run query:
-SELECT c.chunk_text, c.unified_metadata, s.title
-FROM chunks c
-JOIN sources s ON c.source_id = s.id
-WHERE c.chunk_type = 'legal' AND c.unified_metadata IS NOT NULL
-LIMIT 2000
-For each row:
-Extract chunk_text, metadata, title
-Implement function:
-generate_question_for_chunk(text, metadata)
+* Is it realistic and useful?
+* Would a real user ask this?
+  Reject if:
+* trivial (e.g., “what number is Act 10?”)
+* meaningless or too narrow
 
-Call Groq API:
-Prompt:
-"Given this legal text, generate ONE specific factual question a person might ask.
-Return ONLY the question.
+---
 
-Legal text:
-{text[:500]}"
+### 2. Context Quality
 
-Return string
+* Does context contain meaningful legal information?
+  Reject if:
+* too short
+* fragmented text
+* no real legal content
 
-Implement function:
-call_groq_for_ideal_answer(question, context)
-Use same structured legal prompt used in generator
-Return formatted legal answer
-Build training sample:
+---
+
+### 3. Answer Faithfulness
+
+* Is the answer fully supported by context?
+  Reject if:
+* hallucination
+* assumptions not present in context
+* vague statements like "may", "might", "cannot be determined"
+
+---
+
+### 4. Structure Quality
+
+Answer MUST follow:
+
+ANSWER:
+(clear explanation)
+
+LEGAL BASIS:
+(actual text or strong reference)
+
+CITATIONS:
+(valid structured citation)
+
+Reject if:
+
+* missing sections
+* poorly formatted
+* incomplete explanation
+
+---
+
+### 5. Citation Quality
+
+Reject if:
+
+* placeholder citations like "| - | - |"
+* missing section numbers
+* unclear references
+
+---
+
+## 📊 SCORING
+
+Give a score out of 10:
+
+* Question (2)
+* Context (2)
+* Faithfulness (3)
+* Structure (2)
+* Citations (1)
+
+---
+
+## ✅ SELECTION RULE
+
+* KEEP only if score ≥ 8
+* Otherwise REJECT
+
+---
+
+## 🧾 OUTPUT FORMAT
+
+Return ONLY valid samples in JSONL format:
+
 {
-"instruction": "You are a legal information assistant for Indian law. Answer ONLY using provided context.",
-"input": f"CONTEXT:\n{context}\n\nQUESTION: {question}",
-"output": answer
+"instruction": "...",
+"input": "...",
+"output": "...",
+"score": 9
 }
-Save each entry to:
-data/training/legal_rag_dataset.jsonl
 
-(append mode, one JSON per line)
+---
 
-Add:
-progress print every 50 samples
-sleep(1) between API calls
-At end:
-print total examples generated
+## 🚫 IMPORTANT RULES
 
-OUTPUT REQUIREMENTS:
+* Do NOT rewrite samples
+* Do NOT fix errors
+* Only SELECT or REJECT
+* Be extremely strict
 
-Full working code
-No placeholders
-Proper imports
-Error handling for API failures
+---
 
-After writing code:
+## 🔁 FINAL STEP
 
-Provide:
+At the end, print:
 
-How to run it
-Expected output file structure
-Sample JSON entry
-✅ AFTER GEMINI OUTPUTS
-YOU TEST:
+* Total samples processed
+* Total selected
+* Rejection rate %
 
-Run:
+---
 
-python scripts/generate_training_data.py
-✔️ VALIDATION CHECK
-File created? → legal_rag_dataset.jsonl
-Entries present? → YES
-Format correct? → YES
-Answers structured? → YES
+Your goal is to produce a CLEAN, HIGH-QUALITY dataset suitable for fine-tuning a legal reasoning model.
+
+
+After filtering:
+
+If you get:
+<100 samples → lower threshold to 7
+150–250 samples → perfect

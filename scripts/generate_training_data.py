@@ -109,7 +109,10 @@ def main():
             SELECT c.chunk_text, c.unified_metadata, s.title
             FROM chunks c
             JOIN sources s ON c.source_id = s.id
-            WHERE c.chunk_type = 'legal' AND c.unified_metadata IS NOT NULL
+            WHERE c.chunk_type = 'legal' 
+            AND c.unified_metadata IS NOT NULL
+            AND JSON_EXTRACT(c.unified_metadata, '$.source_type') IN ('legal_statute', 'legal_judgment')
+            ORDER BY RAND()
             LIMIT 2000
             """
             cursor.execute(query)
