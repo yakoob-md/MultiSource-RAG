@@ -1,3 +1,6 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from backend.ingestion.chunker import (
     chunk_text,
     chunk_text_with_pages,
@@ -32,4 +35,4 @@ print(f"Total YouTube chunks: {len(yt_chunks)}")
 print(f"First chunk timestamp: {yt_chunks[0]['timestamp_s']}s")
 print(f"First chunk preview  : {yt_chunks[0]['text'][:60]}...")
 
-print("\n✅ All chunker tests passed!")
+print("\n[SUCCESS] All chunker tests passed!")

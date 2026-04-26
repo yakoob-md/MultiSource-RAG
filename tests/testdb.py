@@ -12,4 +12,4 @@ try:
         for t in tables:
             print(" -", list(t.values())[0])
 except Exception as e:
-    print("❌ Connection failed:", e)
+    print("[ERROR] Connection failed:", e)
