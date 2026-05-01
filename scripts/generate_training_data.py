@@ -68,6 +68,8 @@ def generate_blueprint_samples(client, context, title):
     ]
     
     Ensure 'input' includes 'CONTEXT:\nSource: {title}\n{clean_text}\n\nQUESTION: [the question]'
+
+    DO NOT use any information outside the provided context. If answer is not present, explicitly say so.
     """
     
     user_prompt = f"CONTEXT:\n{clean_text}"
