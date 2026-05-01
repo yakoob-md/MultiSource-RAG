@@ -3,6 +3,7 @@ import os
 import time
 import sys
 import re
+import random
 from pathlib import Path
 from groq import Groq
 
@@ -13,85 +14,79 @@ from backend.config import GROQ_API_KEY
 from backend.database.connection import get_connection
 
 # --- CONFIGURATION ---
-# Switching to a smaller model (8B) to resolve rate limit issues (higher TPD/RPD)
-GENERATION_MODEL = "llama-3.1-8b-instant" 
-OUTPUT_FILE = Path("data/training/legal_rag_dataset.jsonl")
+GENERATION_MODEL = "llama-3.1-70b-versatile" # Using 70B for better diversity, falling back to 8B if needed
+OUTPUT_FILE = Path("data/training/legal_rag_dataset_blueprint_raw.jsonl")
 OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-def get_already_processed_chunks():
-    """Read the output file to see which chunks are already done (to support resuming)."""
-    processed_questions = set()
-    if OUTPUT_FILE.exists():
-        with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                try:
-                    data = json.loads(line)
-                    # We use the question as a proxy for the chunk (imperfect but works for resumes)
-                    # Or we could have saved the chunk_id in the JSON. 
-                    # For now, let's just check the question content.
-                    processed_questions.add(data.get("input", ""))
-                except:
-                    continue
-    return processed_questions
+def clean_context(text):
+    """Clean OCR garbage, excessive newlines, and line breaks."""
+    text = re.sub(r'\n+', '\n', text) # Remove multiple newlines
+    text = re.sub(r'[^\x00-\x7F]+', ' ', text) # Remove non-ascii (garbage)
+    text = re.sub(r'Page \d+ of \d+', '', text, flags=re.IGNORECASE)
+    return text.strip()
 
-def call_groq_with_retry(client, messages, model=GENERATION_MODEL, max_tokens=500):
+def call_groq_with_retry(client, messages, model=GENERATION_MODEL, max_tokens=1500):
     """Call Groq with automatic retry logic for rate limits (429)."""
-    max_retries = 5
-    base_delay = 5
-    
+    max_retries = 3
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
                 messages=messages,
                 model=model,
                 max_tokens=max_tokens,
-                timeout=30
+                temperature=0.8, # Higher temp for diversity
+                timeout=60
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
-            err_msg = str(e)
-            if "429" in err_msg:
-                # Try to parse wait time from error: "Please try again in 3m55.008s"
-                wait_time = base_delay * (2 ** attempt) # Default exponential backoff
-                
-                # Regex to find time in error message
-                match = re.search(r"try again in (?:(\d+)m)?([\d.]+)s", err_msg)
-                if match:
-                    m = int(match.group(1)) if match.group(1) else 0
-                    s = float(match.group(2))
-                    wait_time = (m * 60) + s + 2 # Add a small buffer
-                
-                print(f"[RateLimit] Hit 429. Waiting {wait_time:.1f}s before retry {attempt+1}/{max_retries}...")
+            if "429" in str(e):
+                wait_time = 20 * (attempt + 1)
+                print(f"[RateLimit] Waiting {wait_time}s...")
                 time.sleep(wait_time)
             else:
-                print(f"[GroqError] {err_msg}")
+                print(f"[GroqError] {e}")
                 return None
     return None
 
-def generate_question_for_chunk(client, text, metadata):
-    prompt = f"""
-    Given this legal text, generate ONE specific factual question a person might ask.
-    Return ONLY the question.
-
-    Legal text:
-    {text[:500]}
+def generate_blueprint_samples(client, context, title):
+    """Generate 3 DIVERSE Q&A pairs for a single chunk in ONE call."""
+    
+    clean_text = clean_context(context)
+    
+    system_prompt = f"""You are a legal data engineer. Create 3 diverse training samples for a Legal RAG system using the provided context.
+    
+    ## DIVERSITY RULES:
+    Sample 1: STRICT - Formal legal question. Structured output (ANSWER, LEGAL BASIS, CITATIONS).
+    Sample 2: SIMPLE - Messy, real-user query (e.g. "my friend did X..."). Output in "Simple Terms" for a layperson.
+    Sample 3: SPECIAL - Either a "No Answer" case (if info is missing) or a "Conversational" follow-up style.
+    
+    ## FORMAT:
+    Return a JSON LIST of 3 objects:
+    [
+      {{"instruction": "...", "input": "...", "output": "..."}},
+      ...
+    ]
+    
+    Ensure 'input' includes 'CONTEXT:\nSource: {title}\n{clean_text}\n\nQUESTION: [the question]'
     """
-    return call_groq_with_retry(client, [{"role": "user", "content": prompt}], max_tokens=100)
-
-def call_groq_for_ideal_answer(client, question, context):
-    system_prompt = """You are a legal information assistant for Indian law. Answer using ONLY the provided context.
-    Structure your answer as:
-    ANSWER: [clear explanation]
-    LEGAL BASIS: [exact quote from source]
-    CITATIONS: [numbered list: Document | Section/Para | Court | Date]
-    AMENDMENTS: [any amendments to cited sections]
-    Never give legal advice. State only what the law says."""
-
-    prompt = f"CONTEXT:\n{context}\n\nQUESTION: {question}"
-    return call_groq_with_retry(client, [
+    
+    user_prompt = f"CONTEXT:\n{clean_text}"
+    
+    content = call_groq_with_retry(client, [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": prompt}
-    ], max_tokens=600)
+        {"role": "user", "content": user_prompt}
+    ])
+    
+    if not content: return []
+    
+    try:
+        # Extract JSON if model wraps in markdown
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        return json.loads(content)
+    except:
+        print(f"[ParseError] Failed to parse 3-pack JSON")
+        return []
 
 def main():
     if not GROQ_API_KEY:
@@ -99,72 +94,46 @@ def main():
         return
 
     client = Groq(api_key=GROQ_API_KEY)
-    processed_inputs = get_already_processed_chunks()
     
     print(f"Connecting to database... Using model: {GENERATION_MODEL}")
     try:
         with get_connection() as conn:
             cursor = conn.cursor(dictionary=True)
+            # Pick 150 random chunks to get ~450 samples total (since we do 3-packs)
             query = """
-            SELECT c.chunk_text, c.unified_metadata, s.title
+            SELECT c.chunk_text, s.title
             FROM chunks c
             JOIN sources s ON c.source_id = s.id
             WHERE c.chunk_type = 'legal' 
-            AND c.unified_metadata IS NOT NULL
-            AND JSON_EXTRACT(c.unified_metadata, '$.source_type') IN ('legal_statute', 'legal_judgment')
             ORDER BY RAND()
-            LIMIT 2000
+            LIMIT 150
             """
             cursor.execute(query)
             rows = cursor.fetchall()
             
             if not rows:
-                print("No rows found matching criteria.")
+                print("No rows found.")
                 return
 
-            print(f"Found {len(rows)} legal chunks. Resuming from {len(processed_inputs)} already generated.")
+            print(f"Generating ~450 Blueprint samples from {len(rows)} chunks...")
             
-            count = 0
-            # Open in append mode
+            total_generated = 0
             with open(OUTPUT_FILE, "a", encoding="utf-8") as f:
-                for row in rows:
-                    text = row['chunk_text']
-                    title = row['title']
-                    metadata = row['unified_metadata']
+                for i, row in enumerate(rows):
+                    samples = generate_blueprint_samples(client, row['chunk_text'], row['title'])
                     
-                    # 1. Generate question
-                    question = generate_question_for_chunk(client, text, metadata)
-                    if not question: continue
+                    for sample in samples:
+                        f.write(json.dumps(sample, ensure_ascii=False) + "\n")
+                        total_generated += 1
                     
-                    # Simple check for duplication (by question prompt)
-                    context = f"Source: {title}\n{text}"
-                    input_str = f"CONTEXT:\n{context}\n\nQUESTION: {question}"
-                    if input_str in processed_inputs:
-                        continue
+                    f.flush()
+                    print(f"[{i+1}/{len(rows)}] Generated {len(samples)} samples. Total: {total_generated}")
                     
-                    time.sleep(0.5) # Reduced sleep since we have 429 handling now
+                    # Be gentle on Groq 70B rate limits
+                    time.sleep(2) 
                     
-                    # 2. Generate ideal answer
-                    answer = call_groq_for_ideal_answer(client, question, context)
-                    if not answer: continue
-                    
-                    # 3. Create training sample
-                    sample = {
-                        "instruction": "You are a legal information assistant for Indian law. Answer ONLY using provided context.",
-                        "input": input_str,
-                        "output": answer
-                    }
-                    
-                    f.write(json.dumps(sample, ensure_ascii=False) + "\n")
-                    f.flush() # Ensure it's written in case of crash
-                    
-                    count += 1
-                    if count % 10 == 0:
-                        print(f"Progress: {count} NEW samples generated (Total in file: {len(processed_inputs) + count})...")
-                    
-                    time.sleep(0.5)
-                    
-            print(f"Dataset generation complete. Total NEW examples generated: {count}")
+            print(f"\n✅ DONE! Generated {total_generated} blueprint samples in {OUTPUT_FILE}")
+            print("Next step: Run the Parallel Filter to clean these and append to your main dataset.")
 
     except Exception as e:
         print(f"Database error: {e}")

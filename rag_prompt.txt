@@ -1,215 +1,163 @@
-You are an expert AI systems auditor and backend engineer.
+First — Reality Check
 
-Your task is to ANALYZE my entire project codebase and provide a COMPLETE SYSTEM AUDIT, including structure explanation and a step-by-step testing checklist.
+Your current dataset after basic fixes would be:
 
----
+👉 ~7.5/10
 
-## 🎯 OBJECTIVE
+But with the upgrades below:
 
-I want to clearly understand:
+👉 You can push it to 9–9.5/10 (project-topper level)
 
-1. What has been implemented so far
-2. What each file and folder does
-3. How all components connect
-4. How to test EVERYTHING step-by-step from scratch
+🔥 FINAL DATASET UPGRADE BLUEPRINT (DO ALL OF THIS)
+✅ 1. Instruction Diversity (you already plan this)
 
----
+But don’t just randomize — structure it
 
-## ⚠️ STRICT INSTRUCTIONS
+Use 4 categories:
+Type	Example
+Strict grounding	“Answer using only the given context.”
+Simple explanation	“Explain in simple terms.”
+Professional legal	“Provide a structured legal answer.”
+Conversational	“Explain like a lawyer talking to a client.”
 
-* Do NOT give generic explanations
-* Use ONLY the provided codebase context
-* Be SYSTEMATIC and PRACTICAL
-* Assume I will follow your checklist exactly
+👉 Maintain ~25% each
 
----
+✅ 2. Output Style Diversity (VERY IMPORTANT)
 
-## 📦 OUTPUT STRUCTURE (MANDATORY)
+Right now your dataset is too rigid.
 
----
+You need 4 output styles:
+(A) Structured (40%)
+Answer:
+Legal Basis:
+(B) Natural paragraph (30%)
+The answer is...
+This is based on...
+(C) Simple explanation (20%)
+In simple terms...
+(D) Bullet format (10%)
+• Answer:
+• Reason:
 
-# 1. PROJECT OVERVIEW
+👉 This makes your chatbot feel human, not template-driven
 
-* Explain the project in simple terms
-* What type of system it is (RAG, multimodal, etc.)
-* Main components:
+✅ 3. Add “NO ANSWER” cases (MANDATORY)
 
-  * ingestion
-  * database
-  * retrieval
-  * generation
-  * fine-tuning (if present)
+This is non-negotiable for RAG
 
----
+👉 Add 10–15% samples
 
-# 2. FOLDER STRUCTURE EXPLANATION
+Example:
 
-For EACH folder:
+"The answer is not available in the provided context."
+✅ 4. Add “PARTIAL ANSWER” cases (ADVANCED 🔥)
 
-* Purpose of the folder
-* What type of files it contains
-* How it connects to the system
+This is what makes your model stand out
 
-Example format:
+Example:
 
-Folder: backend/rag/
+"The context provides partial information. Based on available details..."
 
-* Purpose:
-* Key files:
-* Role in pipeline:
+👉 Real-world queries are often incomplete
 
----
+✅ 5. Add “STRICT GROUNDING BEHAVIOR”
 
-# 3. FILE-BY-FILE BREAKDOWN
+Train the model to:
 
-For EACH important file:
+❌ NOT assume
+❌ NOT hallucinate
+✅ explicitly say when info missing
 
-* What it does
-* Key functions inside it
-* Input → Output behavior
-* Where it is used in the system
+Example:
 
----
+"Only the provided context has been used. No external assumptions are made."
+✅ 6. Context Cleaning (CRITICAL — MOST PEOPLE IGNORE)
 
-# 4. END-TO-END SYSTEM FLOW
+Fix your inputs:
 
-Explain FULL pipeline:
+REMOVE:
+page numbers
+random line breaks
+OCR garbage
+repeated headers
+KEEP:
+clean paragraphs
+clear sections
 
-User → Input → Processing → Retrieval → Model → Output
+👉 This alone can improve model quality by 30–40%
 
-Include:
+✅ 7. Add Difficulty Levels (SMART DATASET DESIGN)
+Split dataset:
+Level	%
+Easy (direct answer)	50%
+Medium (paraphrasing)	30%
+Hard (reasoning)	20%
+Hard Example:
+"Combine multiple parts of the context to answer."
 
-* PDF ingestion
-* Query handling
-* RAG retrieval
-* Model selection (Groq / fine-tuned / LLaVA)
+👉 This is where models actually improve
 
----
+✅ 8. Add Follow-up / Conversational Samples
 
-# 5. COMPLETE TESTING CHECKLIST (MOST IMPORTANT)
+Even 5–10% is enough
 
-Create a SEQUENTIAL checklist starting from ZERO.
+Example:
 
-For EACH step include:
+"QUESTION: ...
+FOLLOW-UP: Explain this in simpler terms"
+✅ 9. Add “FORMAT CONTROL” samples (VERY IMPORTANT)
 
-### Step X: <Name>
+You want your model to obey instructions like:
 
-* What to do (exact command / API call)
-* Expected output
-* How to verify correctness
-* Common errors + fixes
+"Answer in 3 lines only"
+"Give a concise answer"
+"Explain step-by-step"
 
----
+👉 This gives control during demo
 
-## 🔁 COVER ALL THESE AREAS
+✅ 10. Add “REAL USER QUERIES” (THIS IS GOLD)
 
-### A. Environment Setup
+Right now your dataset is too “perfect”
 
-* Dependencies
-* API keys
-* DB setup
+Add messy queries like:
 
----
+"my friend got caught with drugs what happens now"
+"what punishment for tax fraud india"
 
-### B. Data Ingestion
+👉 This improves:
 
-* Upload PDF
-* Verify DB entries
-* Check embeddings
+robustness
+real-world usability
+✅ 11. Balance dataset size (IMPORTANT)
 
----
+If you have:
 
-### C. Retrieval System
+< 500 samples → weak
+500–1500 → good
+1500–3000 → strong
 
-* Query DB
-* Verify correct chunks retrieved
+👉 Sweet spot: 1000–2000 samples
 
----
+✅ 12. Add “ANTI-HALLUCINATION TAGGING”
 
-### D. RAG Pipeline
+In some outputs include:
 
-* Ask a legal query
-* Verify grounded answer
+"This answer is strictly based on the provided context."
 
----
+👉 Reinforces grounding behavior
 
-### E. Routing Logic
+🚫 WHAT NOT TO DO
 
-* Test:
+Avoid these mistakes:
 
-  * legal mode
-  * general mode
-  * auto mode
+❌ Don’t add too much legal theory
+❌ Don’t make outputs too long
+❌ Don’t mix external knowledge
+❌ Don’t overfit to one format
 
----
-
-### F. Fine-Tuned Model (if present)
-
-* How to enable it
-* How to test difference vs base model
-
----
-
-### G. Image Pipeline (LLaVA)
-
-* Upload image
-* Verify extracted text
-* Verify RAG usage
-
----
-
-### H. Multi-Source Handling
-
-* Upload multiple PDFs
-* Compare results
-* Cross-source query
-
----
-
-### I. Evaluation Scripts
-
-* How to run evaluation
-* What metrics to check
-
----
-
-# 6. DEBUGGING GUIDE
-
-List:
-
-* common failure points
-* how to detect them
-* how to fix them
-
----
-
-# 7. FINAL SYSTEM STATUS
-
-Tell me:
-
-* What is COMPLETE
-* What is PARTIAL
-* What is MISSING
-
----
-
-# 8. READINESS CHECK
-
-Final verdict:
-
-* Is system ready for demo?
-* What must be fixed before presentation?
-
----
-
-## 🎯 GOAL
-
-By the end, I should be able to:
-
-* understand the entire system
-* test everything step-by-step
-* confidently explain it in viva
-
----
-
-Be precise, structured, and implementation-focused.
+🧪 FINAL IDEAL SAMPLE (YOUR TARGET)
+{
+  "instruction": "Explain in simple terms using only the given context.",
+  "input": "CONTEXT: ... QUESTION: What is the punishment?",
+  "output": "In simple terms, the punishment is...\n\nThis is based on the provided legal provision...\n\n(Source: case045.pdf)"
+}
