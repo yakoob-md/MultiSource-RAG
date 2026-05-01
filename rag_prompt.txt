@@ -1,145 +1,215 @@
-You are a strict dataset quality evaluator for a legal AI fine-tuning pipeline.
+You are an expert AI systems auditor and backend engineer.
 
-Your task is to FILTER and SELECT only HIGH-QUALITY training samples from a dataset.
+Your task is to ANALYZE my entire project codebase and provide a COMPLETE SYSTEM AUDIT, including structure explanation and a step-by-step testing checklist.
 
-INPUT:
-You will receive multiple JSON objects, each containing:
+---
 
-* instruction
-* input (with CONTEXT + QUESTION)
-* output (ANSWER + LEGAL BASIS + CITATIONS)
+## 🎯 OBJECTIVE
+
+I want to clearly understand:
+
+1. What has been implemented so far
+2. What each file and folder does
+3. How all components connect
+4. How to test EVERYTHING step-by-step from scratch
+
+---
+
+## ⚠️ STRICT INSTRUCTIONS
+
+* Do NOT give generic explanations
+* Use ONLY the provided codebase context
+* Be SYSTEMATIC and PRACTICAL
+* Assume I will follow your checklist exactly
+
+---
+
+## 📦 OUTPUT STRUCTURE (MANDATORY)
+
+---
+
+# 1. PROJECT OVERVIEW
+
+* Explain the project in simple terms
+* What type of system it is (RAG, multimodal, etc.)
+* Main components:
+
+  * ingestion
+  * database
+  * retrieval
+  * generation
+  * fine-tuning (if present)
+
+---
+
+# 2. FOLDER STRUCTURE EXPLANATION
+
+For EACH folder:
+
+* Purpose of the folder
+* What type of files it contains
+* How it connects to the system
+
+Example format:
+
+Folder: backend/rag/
+
+* Purpose:
+* Key files:
+* Role in pipeline:
+
+---
+
+# 3. FILE-BY-FILE BREAKDOWN
+
+For EACH important file:
+
+* What it does
+* Key functions inside it
+* Input → Output behavior
+* Where it is used in the system
+
+---
+
+# 4. END-TO-END SYSTEM FLOW
+
+Explain FULL pipeline:
+
+User → Input → Processing → Retrieval → Model → Output
+
+Include:
+
+* PDF ingestion
+* Query handling
+* RAG retrieval
+* Model selection (Groq / fine-tuned / LLaVA)
+
+---
+
+# 5. COMPLETE TESTING CHECKLIST (MOST IMPORTANT)
+
+Create a SEQUENTIAL checklist starting from ZERO.
+
+For EACH step include:
+
+### Step X: <Name>
+
+* What to do (exact command / API call)
+* Expected output
+* How to verify correctness
+* Common errors + fixes
+
+---
+
+## 🔁 COVER ALL THESE AREAS
+
+### A. Environment Setup
+
+* Dependencies
+* API keys
+* DB setup
+
+---
+
+### B. Data Ingestion
+
+* Upload PDF
+* Verify DB entries
+* Check embeddings
+
+---
+
+### C. Retrieval System
+
+* Query DB
+* Verify correct chunks retrieved
+
+---
+
+### D. RAG Pipeline
+
+* Ask a legal query
+* Verify grounded answer
+
+---
+
+### E. Routing Logic
+
+* Test:
+
+  * legal mode
+  * general mode
+  * auto mode
+
+---
+
+### F. Fine-Tuned Model (if present)
+
+* How to enable it
+* How to test difference vs base model
+
+---
+
+### G. Image Pipeline (LLaVA)
+
+* Upload image
+* Verify extracted text
+* Verify RAG usage
+
+---
+
+### H. Multi-Source Handling
+
+* Upload multiple PDFs
+* Compare results
+* Cross-source query
+
+---
+
+### I. Evaluation Scripts
+
+* How to run evaluation
+* What metrics to check
+
+---
+
+# 6. DEBUGGING GUIDE
+
+List:
+
+* common failure points
+* how to detect them
+* how to fix them
+
+---
+
+# 7. FINAL SYSTEM STATUS
+
+Tell me:
+
+* What is COMPLETE
+* What is PARTIAL
+* What is MISSING
+
+---
+
+# 8. READINESS CHECK
+
+Final verdict:
+
+* Is system ready for demo?
+* What must be fixed before presentation?
 
 ---
 
 ## 🎯 GOAL
 
-Select ONLY samples that are suitable for fine-tuning a legal reasoning model.
+By the end, I should be able to:
 
-Reject aggressively. It is better to discard data than to include low-quality samples.
-
----
-
-## 🔍 EVALUATION CRITERIA (STRICT)
-
-For EACH sample, evaluate:
-
-### 1. Question Quality
-
-* Is it realistic and useful?
-* Would a real user ask this?
-  Reject if:
-* trivial (e.g., “what number is Act 10?”)
-* meaningless or too narrow
+* understand the entire system
+* test everything step-by-step
+* confidently explain it in viva
 
 ---
 
-### 2. Context Quality
-
-* Does context contain meaningful legal information?
-  Reject if:
-* too short
-* fragmented text
-* no real legal content
-
----
-
-### 3. Answer Faithfulness
-
-* Is the answer fully supported by context?
-  Reject if:
-* hallucination
-* assumptions not present in context
-* vague statements like "may", "might", "cannot be determined"
-
----
-
-### 4. Structure Quality
-
-Answer MUST follow:
-
-ANSWER:
-(clear explanation)
-
-LEGAL BASIS:
-(actual text or strong reference)
-
-CITATIONS:
-(valid structured citation)
-
-Reject if:
-
-* missing sections
-* poorly formatted
-* incomplete explanation
-
----
-
-### 5. Citation Quality
-
-Reject if:
-
-* placeholder citations like "| - | - |"
-* missing section numbers
-* unclear references
-
----
-
-## 📊 SCORING
-
-Give a score out of 10:
-
-* Question (2)
-* Context (2)
-* Faithfulness (3)
-* Structure (2)
-* Citations (1)
-
----
-
-## ✅ SELECTION RULE
-
-* KEEP only if score ≥ 8
-* Otherwise REJECT
-
----
-
-## 🧾 OUTPUT FORMAT
-
-Return ONLY valid samples in JSONL format:
-
-{
-"instruction": "...",
-"input": "...",
-"output": "...",
-"score": 9
-}
-
----
-
-## 🚫 IMPORTANT RULES
-
-* Do NOT rewrite samples
-* Do NOT fix errors
-* Only SELECT or REJECT
-* Be extremely strict
-
----
-
-## 🔁 FINAL STEP
-
-At the end, print:
-
-* Total samples processed
-* Total selected
-* Rejection rate %
-
----
-
-Your goal is to produce a CLEAN, HIGH-QUALITY dataset suitable for fine-tuning a legal reasoning model.
-
-
-After filtering:
-
-If you get:
-<100 samples → lower threshold to 7
-150–250 samples → perfect
+Be precise, structured, and implementation-focused.

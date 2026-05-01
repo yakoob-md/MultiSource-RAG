@@ -1,8 +1,26 @@
-import { Moon, Sun, Database, Trash2, Globe, Zap, Shield, Bell } from 'lucide-react';
+import { Moon, Sun, Database, Trash2, Globe, Zap, Shield, Bell, Loader2, CheckCircle } from 'lucide-react';
 import { useTheme } from '../ThemeProvider';
+import { clearHistory } from '../../api';
+import { useState } from 'react';
 
 export function Settings() {
   const { theme, toggleTheme } = useTheme();
+  const [clearing, setClearing] = useState(false);
+  const [cleared, setCleared] = useState(false);
+
+  const handleClearAll = async () => {
+    if (!confirm('This will permanently delete ALL chat history. Continue?')) return;
+    setClearing(true);
+    try {
+      await clearHistory();
+      setCleared(true);
+      setTimeout(() => setCleared(false), 3000);
+    } catch (e) {
+      alert('Failed to clear history. Is the backend running?');
+    } finally {
+      setClearing(false);
+    }
+  };
 
   return (
     <div className="h-full overflow-y-auto">
@@ -199,9 +217,18 @@ export function Settings() {
                   Irreversible actions that affect your entire knowledge base
                 </p>
                 
-                <button className="px-4 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center gap-2">
-                  <Trash2 className="w-4 h-4" />
-                  <span className="text-sm">Clear All Data</span>
+                <button
+                  onClick={handleClearAll}
+                  disabled={clearing}
+                  className="px-4 py-3 rounded-xl bg-red-600 hover:bg-red-700 
+                             disabled:opacity-50 text-white transition-colors flex items-center gap-2"
+                >
+                  {clearing
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Clearing...</span></>
+                    : cleared
+                    ? <><CheckCircle className="w-4 h-4" /><span>Cleared!</span></>
+                    : <><Trash2 className="w-4 h-4" /><span>Clear All Data</span></>
+                  }
                 </button>
               </div>
             </div>

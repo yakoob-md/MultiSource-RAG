@@ -1,3 +1,4 @@
+# backend/main.py — FIXED VERSION
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -15,67 +16,56 @@ from backend.api.legal_query_routes import router as legal_query_router
 from backend.ingestion.embedder import get_model as preload_embedder
 from backend.rag.retriever import _get_reranker as preload_reranker
 
-# ── Model Pre-loading ──────────────────────────────────────────────────────────
-
 def _load_models(app: FastAPI):
-    """
-    Load heavy ML models in a separate thread during startup so that the
-    FastAPI worker remains responsive for high-level setup.
-    """
-    print("[Startup] ✨ Thread loading heavy ML models into memory... This might take ~5-15 seconds.")
+    print("[Startup] Loading ML models...")
     try:
         preload_embedder()
         preload_reranker()
-        print("[Startup] 🚀 Models fully loaded! Ready for blazing-fast queries.")
+        print("[Startup] Models ready.")
     except Exception as e:
-        print(f"[Startup] ❌ Model loading failed: {e}")
+        print(f"[Startup] Model load failed: {e}")
     finally:
         app.state.models_ready.set()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize state
     app.state.models_ready = asyncio.Event()
-    # Offload the blocking CPU/disk work so FastAPI doesn't freeze
     asyncio.create_task(asyncio.to_thread(_load_models, app))
     yield
 
-# ── App Initialization ─────────────────────────────────────────────────────────
-
 app = FastAPI(
     title="UMKA RAG System",
-    description="Advanced RAG system for Multi-Source Information Retrieval (PDF, Web, YouTube, Legal)",
-    version="2.1.0",
+    version="2.2.0",
     lifespan=lifespan
 )
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this to your frontend URL
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ── Router Registration ───────────────────────────────────────────────────────
-
+# ── Core routes (no prefix) ───────────────────────────────────────────────────
 app.include_router(sources_router)
 app.include_router(upload_router)
 app.include_router(query_router)
 app.include_router(history_router)
 app.include_router(stream_router)
-app.include_router(legal_router)
-app.include_router(image_router)
-app.include_router(legal_query_router)
 
-# ── Health Check ──────────────────────────────────────────────────────────────
+# ── Legal routes under /legal prefix ─────────────────────────────────────────
+# This fixes the 404 on /legal/legal-sources that the frontend expects
+app.include_router(legal_router,       prefix="/legal", tags=["legal"])
+app.include_router(legal_query_router, tags=["legal"])   # /legal-query stays at root
+
+# ── Image routes under /images prefix ────────────────────────────────────────
+app.include_router(image_router, prefix="/images", tags=["images"])
 
 @app.get("/health")
 def health():
     return {
-        "status": "ok", 
-        "version": "2.1.0",
+        "status": "ok",
+        "version": "2.2.0",
         "models_ready": app.state.models_ready.is_set()
     }

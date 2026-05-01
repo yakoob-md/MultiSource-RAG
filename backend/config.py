@@ -34,6 +34,7 @@ FAISS_INDEX_PATH  = FAISS_DIR / "index.faiss"
 FAISS_IDMAP_PATH  = FAISS_DIR / "id_map.json"
 
 # ── Retrieval ─────────────────────────────────────────────────────────────────
+RERANKER_SCORE_THRESHOLD = -5.0   # drop chunks scoring below this
 TOP_K = 8
 
 # ── LLM (Groq) ───────────────────────────────────────────────────────────────

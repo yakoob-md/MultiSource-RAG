@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from backend.config import TOP_K
+from backend.config import TOP_K, RERANKER_SCORE_THRESHOLD
 from backend.ingestion.embedder import embed_query
 from backend.vectorstore.faiss_store import search_vectors
 from backend.database.connection import get_connection
@@ -322,5 +322,8 @@ def retrieve(question: str, source_ids: list[str] | None = None) -> list[Retriev
     # Scores the RERANK_POOL candidates with full query-passage attention,
     # returns only the best TOP_K with reranker scores attached
     final_chunks = _rerank(question, pre_rerank_chunks, top_n=TOP_K)
+
+    # ✅ NEW: Filter out irrelevant chunks below score threshold
+    final_chunks = [c for c in final_chunks if c.score >= RERANKER_SCORE_THRESHOLD]
 
     return final_chunks

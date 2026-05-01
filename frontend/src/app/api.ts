@@ -252,12 +252,14 @@ export async function queryRag(question: string, sourceIds?: string[]): Promise<
   };
 }
 
+// frontend/src/app/api.ts — streamQueryRag FIXED
+
 export async function streamQueryRag(
   question: string,
   sourceIds: string[] | undefined,
   history: Array<{ role: string; content: string }>,
   onToken: (token: string) => void,
-  onMeta: (meta: { chatId: string, citations: Citation[], retrievedChunks: RetrievedChunk[] }) => void,
+  onMeta: (meta: { chatId: string; citations: Citation[]; retrievedChunks: RetrievedChunk[] }) => void,
   onError: (err: Error) => void
 ): Promise<void> {
   try {
@@ -284,7 +286,7 @@ export async function streamQueryRag(
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // Keep the last partial line in buffer
+      buffer = lines.pop() || '';
 
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
@@ -293,23 +295,51 @@ export async function streamQueryRag(
 
         try {
           const parsed = JSON.parse(jsonStr);
+
           if (parsed.error) {
             onError(new Error(parsed.error));
             return;
           }
-          if (parsed.done) {
-            onMeta({
-              chatId: parsed.chatId,
-              citations: parsed.citations || [],
-              retrievedChunks: parsed.retrievedChunks || []
-            });
-            return;
-          }
-          if (parsed.token) {
+
+          // Token event
+          if (parsed.token !== undefined && parsed.token !== '') {
             onToken(parsed.token);
           }
+
+          // Done event — stream.py sends citations + retrievedChunks here
+          if (parsed.done) {
+            const rawCitations = parsed.citations || [];
+            const rawChunks = parsed.retrievedChunks || [];
+
+            const citations: Citation[] = rawCitations.map((c: any) => ({
+              sourceTitle: c.source_title || c.sourceTitle || '',
+              sourceType: (c.source_type === 'url' ? 'web' : c.source_type || 'pdf') as any,
+              reference: c.reference || '',
+              snippet: c.snippet || '',
+            }));
+
+            const retrievedChunks: RetrievedChunk[] = rawChunks.map((c: any, i: number) => ({
+              id: c.chunkId || c.chunk_id || String(i),
+              sourceId: c.sourceId || c.source_id || '',
+              sourceName: c.sourceTitle || c.source_title || '',
+              sourceType: (c.sourceType === 'url' ? 'web' : c.sourceType || 'pdf') as any,
+              language: ((c.language || 'en').toUpperCase()) as Language,
+              text: c.text || c.chunk_text || '',
+              similarityScore: typeof c.score === 'number' ? c.score : 0,
+              metadata: {
+                page: c.pageNumber ?? c.page_number,
+                timestamp: c.timestampS != null
+                  ? `${Math.floor(c.timestampS / 60)}:${String(c.timestampS % 60).padStart(2, '0')}`
+                  : undefined,
+                url: c.urlRef || c.url_ref,
+              },
+            }));
+
+            onMeta({ chatId: parsed.chatId || '', citations, retrievedChunks });
+            return;
+          }
         } catch {
-          // JSON parsing failed, likely partial data
+          // Partial JSON — skip
         }
       }
     }
