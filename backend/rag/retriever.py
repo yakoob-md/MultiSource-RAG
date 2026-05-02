@@ -243,38 +243,50 @@ def retrieve(question: str, source_ids: list[str] | None = None) -> list[Retriev
     RERANK_POOL = TOP_K * 3
 
     # ── Step 1: Embed the question ────────────────────────────────────────────
-    query_vector = embed_query(question)
+    try:
+        query_vector = embed_query(question)
+    except Exception as e:
+        print(f"[Retriever] Error embedding query: {e}")
+        return []
 
     # ── Step 2: Vector search — fetch large pool ──────────────────────────────
-    fetch_k  = CANDIDATE_POOL_SIZE * 5 if source_ids else CANDIDATE_POOL_SIZE
-    raw_hits = search_vectors(query_vector, top_k=fetch_k)
+    try:
+        fetch_k  = CANDIDATE_POOL_SIZE * 5 if source_ids else CANDIDATE_POOL_SIZE
+        raw_hits = search_vectors(query_vector, top_k=fetch_k)
+    except Exception as e:
+        print(f"[Retriever] Error in FAISS search: {e}")
+        return []
 
     if not raw_hits:
         return []
 
     # ── Step 3: Fetch chunk details from MySQL ────────────────────────────────
-    chunk_ids    = [hit["chunk_id"] for hit in raw_hits]
-    placeholders = ", ".join(["%s"] * len(chunk_ids))
+    try:
+        chunk_ids    = [hit["chunk_id"] for hit in raw_hits]
+        placeholders = ", ".join(["%s"] * len(chunk_ids))
 
-    with get_connection() as conn:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute(f"""
-            SELECT
-                c.id            AS chunk_id,
-                c.source_id,
-                c.chunk_text,
-                c.page_number,
-                c.timestamp_s,
-                c.url_ref,
-                s.type          AS source_type,
-                s.title         AS source_title,
-                s.language
-            FROM chunks c
-            JOIN sources s ON s.id = c.source_id
-            WHERE c.id IN ({placeholders})
-        """, chunk_ids)
+        with get_connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(f"""
+                SELECT
+                    c.id            AS chunk_id,
+                    c.source_id,
+                    c.chunk_text,
+                    c.page_number,
+                    c.timestamp_s,
+                    c.url_ref,
+                    s.type          AS source_type,
+                    s.title         AS source_title,
+                    s.language
+                FROM chunks c
+                JOIN sources s ON s.id = c.source_id
+                WHERE c.id IN ({placeholders})
+            """, chunk_ids)
 
-        candidate_rows = cursor.fetchall()
+            candidate_rows = cursor.fetchall()
+    except Exception as e:
+        print(f"[Retriever] Error fetching from MySQL: {e}")
+        return []
 
     if not candidate_rows:
         return []
@@ -287,14 +299,24 @@ def retrieve(question: str, source_ids: list[str] | None = None) -> list[Retriev
         return []
 
     # ── Step 5: BM25 keyword search over the candidate pool ───────────────────
-    surviving_ids        = {r["chunk_id"] for r in candidate_rows}
-    vector_hits_filtered = [h for h in raw_hits if h["chunk_id"] in surviving_ids]
+    try:
+        surviving_ids        = {r["chunk_id"] for r in candidate_rows}
+        vector_hits_filtered = [h for h in raw_hits if h["chunk_id"] in surviving_ids]
 
-    bm25_hits = _bm25_search(question, candidate_rows, top_k=CANDIDATE_POOL_SIZE)
+        bm25_hits = _bm25_search(question, candidate_rows, top_k=CANDIDATE_POOL_SIZE)
+    except Exception as e:
+        print(f"[Retriever] Error in BM25 search: {e}")
+        # Continue with vector hits only if BM25 fails
+        bm25_hits = []
+        vector_hits_filtered = [h for h in raw_hits if h["chunk_id"] in surviving_ids]
 
     # ── Step 6: Reciprocal Rank Fusion → top RERANK_POOL candidates ───────────
-    fused = _reciprocal_rank_fusion(vector_hits_filtered, bm25_hits)
-    fused = fused[:RERANK_POOL]
+    try:
+        fused = _reciprocal_rank_fusion(vector_hits_filtered, bm25_hits)
+        fused = fused[:RERANK_POOL]
+    except Exception as e:
+        print(f"[Retriever] Error in RRF fusion: {e}")
+        return []
 
     # ── Step 7: Build RetrievedChunk objects for the reranker ─────────────────
     row_map = {row["chunk_id"]: row for row in candidate_rows}
@@ -319,9 +341,14 @@ def retrieve(question: str, source_ids: list[str] | None = None) -> list[Retriev
         ))
 
     # ── Step 8: Cross-encoder reranking on GPU ────────────────────────────────
-    # Scores the RERANK_POOL candidates with full query-passage attention,
-    # returns only the best TOP_K with reranker scores attached
-    final_chunks = _rerank(question, pre_rerank_chunks, top_n=TOP_K)
+    try:
+        # Scores the RERANK_POOL candidates with full query-passage attention,
+        # returns only the best TOP_K with reranker scores attached
+        final_chunks = _rerank(question, pre_rerank_chunks, top_n=TOP_K)
+    except Exception as e:
+        print(f"[Retriever] Error in cross-encoder reranking: {e}")
+        # Fallback: return the RRF results if reranker fails
+        return pre_rerank_chunks[:TOP_K]
 
     # ✅ NEW: Filter out irrelevant chunks below score threshold
     final_chunks = [c for c in final_chunks if c.score >= RERANKER_SCORE_THRESHOLD]

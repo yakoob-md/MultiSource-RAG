@@ -30,7 +30,8 @@ def _get_index() -> faiss.IndexFlatIP:
             _id_map = json.load(f)
         print(f"[FAISS] Loaded {len(_id_map)} vectors")
     else:
-        print("[FAISS] Creating new index...")
+        print(f"[FAISS] WARNING: No index found at {FAISS_INDEX_PATH}. Ingest documents first.")
+        print("[FAISS] Creating new empty index...")
         _index = faiss.IndexFlatIP(EMBEDDING_DIM)
         _id_map = []
 
@@ -135,3 +136,12 @@ def delete_vectors(chunk_ids: set[str]):
 def get_total_vectors() -> int:
     """Returns total number of vectors currently stored."""
     return _get_index().ntotal
+
+def get_stats() -> dict:
+    """Returns diagnostic statistics for the FAISS index."""
+    exists = Path(FAISS_INDEX_PATH).exists()
+    return {
+        "total_vectors": _get_index().ntotal if exists else 0,
+        "index_path": str(FAISS_INDEX_PATH),
+        "exists": exists
+    }

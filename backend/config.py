@@ -55,3 +55,16 @@ BASE_MODEL_NAME     = "unsloth/Meta-Llama-3.1-8B-bnb-4bit"
 HF_API_KEY          = os.getenv("HF_API_KEY")
 HF_LEGAL_MODEL_ID   = os.getenv("HF_LEGAL_MODEL_ID") # e.g., "username/legal_model"
 HF_IMAGE_MODEL_ID   = "Salesforce/blip-image-captioning-large"
+
+def verify_config():
+    missing = []
+    if not GROQ_API_KEY:
+        missing.append("GROQ_API_KEY")
+    if missing:
+        print(f"[Config] WARNING: Missing env vars: {missing}")
+        print("[Config] Copy backend/.env.example to backend/.env and fill values")
+    else:
+        print("[Config] All required env vars present")
+
+# Call verify_config() at module load time.
+verify_config()

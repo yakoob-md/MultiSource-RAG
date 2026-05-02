@@ -77,8 +77,22 @@ app.include_router(image_router, prefix="/images", tags=["images"])
 
 @app.get("/health")
 def health():
+    from backend.config import GROQ_API_KEY, FAISS_INDEX_PATH
+    from backend.database.connection import get_connection
+    import os
+    
+    db_status = False
+    try:
+        conn = get_connection()
+        db_status = True
+        conn.close()
+    except Exception as e:
+        print(f"[Health] DB Check failed: {e}")
+
     return {
         "status": "ok",
-        "version": "2.2.0",
+        "groq_configured": bool(GROQ_API_KEY),
+        "db_connected": db_status,
+        "faiss_index_exists": os.path.exists(FAISS_INDEX_PATH),
         "models_ready": app.state.models_ready.is_set()
     }
