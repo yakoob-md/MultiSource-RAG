@@ -152,7 +152,7 @@ export function CommandPalette({ onSelectHistory }: { onSelectHistory?: (id: str
           window.dispatchEvent(new CustomEvent('new-chat'));
           navigateTo("/app");
       },
-      shortcut: "Alt+H",
+      shortcut: "Alt+N",
       keywords: ["home", "main", "chat", "ask", "new"],
     },
     {
