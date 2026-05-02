@@ -36,6 +36,9 @@ import {
   Play,
   Terminal,
   Smartphone as Phone,
+  MessageSquare,
+  Database,
+  History,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router";
@@ -140,14 +143,17 @@ export function CommandPalette({ onSelectHistory }: { onSelectHistory?: (id: str
   const allCommandItems: CommandItem[] = [
     {
       id: "nav-home",
-      title: "InteleX Home",
-      description: "Go to the main chat assistant",
+      title: "InteleX Assistant",
+      description: "Start a new conversation",
       category: "Navigation",
       section: "all",
-      icon: <Home className="h-3 w-3" />,
-      action: () => navigateTo("/app"),
+      icon: <MessageSquare className="h-3 w-3" />,
+      action: () => {
+          window.dispatchEvent(new CustomEvent('new-chat'));
+          navigateTo("/app");
+      },
       shortcut: "Alt+H",
-      keywords: ["home", "main", "chat", "ask"],
+      keywords: ["home", "main", "chat", "ask", "new"],
     },
     {
         id: "nav-legal",
@@ -163,13 +169,29 @@ export function CommandPalette({ onSelectHistory }: { onSelectHistory?: (id: str
     {
         id: "nav-sources",
         title: "Resource Manager",
-        description: "View and upload knowledge sources",
+        description: "View knowledge statistics & upload files",
         category: "Navigation",
         section: "favorites",
-        icon: <Globe className="h-3 w-3" />,
-        action: () => navigateTo("/app/sources"),
+        icon: <Database className="h-3 w-3" />,
+        action: () => {
+            window.dispatchEvent(new CustomEvent('open-sources'));
+            setOpen(false);
+        },
         shortcut: "Alt+R",
-        keywords: ["sources", "files", "pdf", "youtube", "web"],
+        keywords: ["sources", "files", "pdf", "youtube", "web", "kb", "knowledge"],
+    },
+    {
+        id: "nav-history",
+        title: "Chat History",
+        description: "Open your previous conversations",
+        category: "Navigation",
+        section: "favorites",
+        icon: <History className="h-3 w-3" />,
+        action: () => {
+            window.dispatchEvent(new CustomEvent('open-history'));
+            setOpen(false);
+        },
+        shortcut: "Alt+H",
     },
     {
       id: "nav-settings",
@@ -184,7 +206,7 @@ export function CommandPalette({ onSelectHistory }: { onSelectHistory?: (id: str
     {
         id: "toggle-fullscreen",
         title: "Toggle Fullscreen",
-        description: "Maximize workspace",
+        description: "Maximize your focus",
         category: "System",
         section: "all",
         icon: <Maximize className="h-3 w-3" />,

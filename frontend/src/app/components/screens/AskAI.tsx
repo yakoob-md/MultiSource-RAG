@@ -8,7 +8,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router';
 import { ChatMessage, RetrievedChunk, KnowledgeSource } from '../../types';
-import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, Conversation, uploadImage } from '../../api';
+import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, Conversation, uploadImage, uploadPdf, addWebsite, addYouTube } from '../../api';
 import { cn } from '../ui/utils';
 // import { CommandPalette } from '../CommandPalette';
 
@@ -135,7 +135,6 @@ export function AskAI() {
   // ── Conversation state ────────────────────────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false); // Default closed in unified UI
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const navigate = useNavigate();
@@ -167,8 +166,6 @@ export function AskAI() {
   const [kbPage, setKbPage] = useState(1);
   const KB_ITEMS_PER_PAGE = 4;
   const [isUploadingSource, setIsUploadingSource] = useState(false);
-  const [uploadUrlInput, setUploadUrlInput] = useState('');
-  const [uploadType, setUploadType] = useState<'url' | 'youtube'>('url');
   const sourceFileInputRef = useRef<HTMLInputElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -226,31 +223,59 @@ export function AskAI() {
             loadConversation(e.detail.id);
         }
     };
-    window.addEventListener('load-conversation', handleLoadConv);
-    return () => window.removeEventListener('load-conversation', handleLoadConv);
-  }, [loadConversation]);
+    const handleOpenSources = () => setIsKbOpen(true);
+    const handleOpenHistory = () => {
+        // Since we removed the overlay, opening history now triggers the Command Palette
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+    };
+    const handleNewChat = () => {
+        setActiveConvId(null);
+        setMessages([]);
+        setSelectedChunks([]);
+        setQuestion('');
+    };
 
-  const handleNewChat = () => {
-    setActiveConvId(null);
-    setMessages([]);
-    setSelectedChunks([]);
-    setQuestion('');
-    setError(null);
-  };
+    window.addEventListener('load-conversation', handleLoadConv);
+    window.addEventListener('open-sources', handleOpenSources);
+    window.addEventListener('open-history', handleOpenHistory);
+    window.addEventListener('new-chat', handleNewChat);
+
+    return () => {
+        window.removeEventListener('load-conversation', handleLoadConv);
+        window.removeEventListener('open-sources', handleOpenSources);
+        window.removeEventListener('open-history', handleOpenHistory);
+        window.removeEventListener('new-chat', handleNewChat);
+    };
+  }, [loadConversation]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setIsUploadingImage(true);
-    setImagePreviewUrl(URL.createObjectURL(file));
-    try {
-      const res = await uploadImage(file);
-      setActiveImageId(res.image_id);
-    } catch (err: any) {
-      setError(err.message || "Image upload failed");
-      setImagePreviewUrl(null);
-    } finally {
-      setIsUploadingImage(false);
+    
+    // Direct upload logic
+    if (file.type.startsWith('image/')) {
+        setIsUploadingImage(true);
+        setImagePreviewUrl(URL.createObjectURL(file));
+        try {
+            const res = await uploadImage(file);
+            setActiveImageId(res.image_id);
+        } catch (err: any) {
+            setError(err.message || "Image upload failed");
+            setImagePreviewUrl(null);
+        } finally {
+            setIsUploadingImage(false);
+        }
+    } else if (file.type === 'application/pdf') {
+        setIsUploadingSource(true);
+        try {
+            await uploadPdf(file);
+            const updated = await fetchSources();
+            setSources(updated);
+        } catch (err: any) {
+            setError(err.message || "PDF upload failed");
+        } finally {
+            setIsUploadingSource(false);
+        }
     }
   };
 
@@ -344,16 +369,17 @@ export function AskAI() {
 
   const isInitial = messages.length === 0 && !isStreaming && !isThinking;
 
-  return (
-    <div className="h-full flex bg-[#0A0A0B] text-white relative overflow-hidden">
-      {/* CommandPalette is now global in MainLayout */}
-      
-      {/* Background Glows */}
-      <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-violet-500/5 rounded-full filter blur-[128px]" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-[#6366F1]/5 rounded-full filter blur-[128px]" />
-      </div>
+  // ── Resource Manager Visuals ──────────────────────────────────────────────
+  const stats = {
+      pdf: sources.filter(s => s.type === 'pdf').length,
+      web: sources.filter(s => s.type === 'web').length,
+      youtube: sources.filter(s => s.type === 'youtube').length,
+      total: sources.length
+  };
 
+  return (
+    <div className="h-full flex text-white relative overflow-hidden">
+      
       {/* Main Container */}
       <div className="flex-1 flex flex-col relative z-10">
         
@@ -438,7 +464,7 @@ export function AskAI() {
                   <button onClick={() => setIsKbOpen(true)} className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2">
                       <Database className="w-3 h-3 text-[#6366F1]" /> Sources
                   </button>
-                  <button onClick={() => setSidebarOpen(true)} className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2">
+                  <button onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))} className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2">
                       <Clock className="w-3 h-3 text-[#6366F1]" /> History
                   </button>
               </div>
@@ -499,12 +525,14 @@ export function AskAI() {
                    <div className="flex items-center gap-1">
                       <button 
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="p-2 text-white/20 hover:text-white transition-colors"
+                        onClick={() => sourceFileInputRef.current?.click()}
+                        className="p-2 text-white/20 hover:text-white transition-colors flex items-center gap-2"
+                        title="Upload PDF or Image"
                       >
                         <Paperclip className="w-4 h-4" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Attach</span>
                       </button>
-                      <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
+                      <input type="file" ref={sourceFileInputRef} onChange={handleFileChange} accept="image/*,application/pdf" className="hidden" />
                       
                       <div className="h-4 w-px bg-white/5 mx-2" />
                       
@@ -534,71 +562,123 @@ export function AskAI() {
         </div>
       </div>
 
-      {/* Knowledge Base Modal remains similar but restyled */}
+      {/* Resource Manager Visual Modal */}
       <AnimatePresence>
         {isKbOpen && (
-            <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
                 <motion.div 
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className="bg-[#1e1e2e] border border-white/10 w-full max-w-4xl rounded-3xl overflow-hidden flex flex-col max-h-[85vh] shadow-2xl"
+                    className="bg-[#0A0A0B] border border-white/10 w-full max-w-5xl rounded-3xl overflow-hidden flex flex-col max-h-[85vh] shadow-2xl relative"
                 >
-                    <div className="px-6 py-4 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
-                        <div className="flex items-center gap-3">
-                            <Database className="w-6 h-6 text-[#6366F1]" />
-                            <h2 className="text-xl font-bold">Resource Manager</h2>
+                    <div className="px-8 py-6 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-[#6366F1]/10 flex items-center justify-center border border-[#6366F1]/20">
+                                <Database className="w-5 h-5 text-[#6366F1]" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-bold tracking-tight">Resource Manager</h2>
+                                <p className="text-[10px] text-white/20 font-bold uppercase tracking-[0.2em]">Knowledge Bank Statistics</p>
+                            </div>
                         </div>
-                        <button onClick={() => setIsKbOpen(false)} className="p-2 rounded-full hover:bg-white/5 text-white/40 transition-colors">
+                        <button onClick={() => setIsKbOpen(false)} className="p-2 rounded-xl hover:bg-white/5 text-white/20 hover:text-white transition-all">
                             <X className="w-5 h-5" />
                         </button>
                     </div>
-                    {/* ... Rest of KB modal logic from existing AskAI ... */}
-                    <div className="p-8 text-center text-white/20">Knowledge Base Content Loaded</div>
-                    <button onClick={() => setIsKbOpen(false)} className="m-4 py-2 bg-white/5 rounded-xl text-xs font-bold uppercase tracking-widest">Close</button>
+
+                    <div className="flex-1 overflow-y-auto p-8 space-y-8 no-scrollbar">
+                        {/* Statistics Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                            {[
+                                { label: 'Total Sources', value: stats.total, icon: Database, color: 'text-[#6366F1]' },
+                                { label: 'PDF Documents', value: stats.pdf, icon: FileText, color: 'text-violet-400' },
+                                { label: 'Web Pages', value: stats.web, icon: Globe, color: 'text-blue-400' },
+                                { label: 'YouTube Links', value: stats.youtube, icon: Youtube, color: 'text-red-400' },
+                            ].map((s, i) => (
+                                <div key={i} className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <s.icon className={cn("w-4 h-4", s.color)} />
+                                        <span className="text-2xl font-bold">{s.value}</span>
+                                    </div>
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/20">{s.label}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Visual Graph / Distribution */}
+                        <div className="p-8 rounded-3xl bg-white/[0.01] border border-white/5 space-y-6">
+                            <div className="flex justify-between items-end">
+                                <div className="space-y-1">
+                                    <h3 className="text-sm font-bold uppercase tracking-widest">Storage Distribution</h3>
+                                    <p className="text-[10px] text-white/20 font-medium">Visual representation of your knowledge base composition</p>
+                                </div>
+                                <button 
+                                    onClick={() => sourceFileInputRef.current?.click()}
+                                    className="px-6 py-2 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-[#6366F1]/20"
+                                >
+                                    Upload New Source
+                                </button>
+                            </div>
+
+                            <div className="h-4 w-full bg-white/5 rounded-full overflow-hidden flex">
+                                <motion.div 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${(stats.pdf / stats.total) * 100 || 0}%` }}
+                                    className="h-full bg-violet-400"
+                                    title="PDFs"
+                                />
+                                <motion.div 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${(stats.web / stats.total) * 100 || 0}%` }}
+                                    className="h-full bg-blue-400"
+                                    title="Web"
+                                />
+                                <motion.div 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${(stats.youtube / stats.total) * 100 || 0}%` }}
+                                    className="h-full bg-red-400"
+                                    title="YouTube"
+                                />
+                            </div>
+
+                            <div className="flex flex-wrap gap-6 pt-2">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-violet-400" />
+                                    <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">PDF Documents</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-blue-400" />
+                                    <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Web Scraping</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-red-400" />
+                                    <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">YouTube Transcripts</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Recent Sources List */}
+                        <div className="space-y-4">
+                            <h3 className="text-sm font-bold uppercase tracking-widest px-1">Recent Knowledge</h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {sources.slice(0, 8).map(source => (
+                                    <div key={source.id} className="flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all group">
+                                        <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white/20 group-hover:text-[#6366F1] transition-colors">
+                                            {source.type === 'pdf' ? <FileText className="w-5 h-5" /> : source.type === 'web' ? <Globe className="w-5 h-5" /> : <Youtube className="w-5 h-5" />}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs font-bold truncate">{source.title}</p>
+                                            <p className="text-[10px] text-white/20 font-medium uppercase tracking-tighter">{new Date(source.dateAdded).toLocaleDateString()}</p>
+                                        </div>
+                                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-white/20 uppercase tracking-widest">{source.status}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 </motion.div>
             </div>
-        )}
-      </AnimatePresence>
-
-      {/* Sidebar Overlay (for History) */}
-      <AnimatePresence>
-        {sidebarOpen && (
-            <>
-                <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={() => setSidebarOpen(false)}
-                    className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm"
-                />
-                <motion.div 
-                    initial={{ x: -300 }}
-                    animate={{ x: 0 }}
-                    exit={{ x: -300 }}
-                    className="fixed top-0 left-0 bottom-0 w-80 z-[101] bg-[#1e1e2e] border-r border-white/10 p-6 flex flex-col"
-                >
-                    <div className="flex items-center justify-between mb-8">
-                        <h2 className="text-lg font-bold">Chat History</h2>
-                        <button onClick={() => setSidebarOpen(false)} className="p-1 hover:bg-white/5 rounded-lg text-white/40"><ChevronLeft className="w-5 h-5" /></button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar">
-                        {conversations.map(conv => (
-                            <button 
-                                key={conv.id}
-                                onClick={() => { loadConversation(conv.id); setSidebarOpen(false); }}
-                                className={cn(
-                                    "w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left",
-                                    activeConvId === conv.id ? "bg-white/10 text-white" : "text-white/40 hover:bg-white/5"
-                                )}
-                            >
-                                <MessageSquare className="w-4 h-4 flex-shrink-0" />
-                                <span className="text-xs font-medium truncate">{conv.title}</span>
-                            </button>
-                        ))}
-                    </div>
-                </motion.div>
-            </>
         )}
       </AnimatePresence>
 
