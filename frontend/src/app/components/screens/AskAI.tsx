@@ -3,7 +3,7 @@ import {
   Send, Loader2, FileText, Globe, Youtube,
   Plus, MessageSquare, Trash2, X,
   ChevronLeft, Paperclip, Image as ImageIcon,
-  Database, Upload, Link as LinkIcon, Send as SendIcon, X as XIcon, Sparkles, Clock, Lock
+  Database, Upload, Link as LinkIcon, Send as SendIcon, X as XIcon, Sparkles, Clock, Lock, History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router';
@@ -181,6 +181,17 @@ export function AskAI() {
     });
   }, []);
 
+  const handleOpenSources = () => setIsKbOpen(true);
+  const handleOpenHistory = () => setSidebarOpen(true);
+  const handleNewChat = useCallback(() => {
+      setActiveConvId(null);
+      (window as any).currentConversationId = null;
+      setMessages([]);
+      setSelectedChunks([]);
+      setQuestion('');
+      setSelectedSourceIds(new Set());
+  }, []);
+
   const loadConversation = useCallback(async (convId: string) => {
     setActiveConvId(convId);
     (window as any).currentConversationId = convId; // Sync for API context
@@ -234,16 +245,6 @@ export function AskAI() {
             loadConversation(e.detail.id);
         }
     };
-    const handleOpenSources = () => setIsKbOpen(true);
-    const handleOpenHistory = () => setSidebarOpen(true);
-    const handleNewChat = () => {
-        setActiveConvId(null);
-        (window as any).currentConversationId = null;
-        setMessages([]);
-        setSelectedChunks([]);
-        setQuestion('');
-        setSelectedSourceIds(new Set());
-    };
 
     window.addEventListener('load-conversation', handleLoadConv);
     window.addEventListener('open-sources', handleOpenSources);
@@ -256,7 +257,7 @@ export function AskAI() {
         window.removeEventListener('open-history', handleOpenHistory);
         window.removeEventListener('new-chat', handleNewChat);
     };
-  }, [loadConversation]);
+  }, [loadConversation, handleNewChat]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
