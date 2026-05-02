@@ -129,6 +129,85 @@ function TypingDots() {
     );
 }
 
+// ── Citation Tooltip (Wikipedia-style hover preview) ─────────────────────────
+
+interface CitationTooltipProps {
+  chunk: RetrievedChunk;
+  index: number;
+}
+
+function CitationTooltip({ chunk, index }: CitationTooltipProps) {
+  const [show, setShow] = useState(false);
+  const IconMap: Record<string, React.ElementType> = { pdf: FileText, web: Globe, youtube: Youtube };
+  const Icon = IconMap[chunk.sourceType] || FileText;
+  const score = Math.round((chunk.similarityScore || 0) * 100);
+
+  return (
+    <div
+      className="relative inline-block"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      <button
+        className={cn(
+          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer",
+          "bg-[#6366F1]/10 border border-[#6366F1]/20 text-[#6366F1] hover:bg-[#6366F1]/20"
+        )}
+      >
+        <Icon className="w-3 h-3" />
+        <span className="max-w-[120px] truncate">{chunk.sourceName || 'Source'}</span>
+        {chunk.metadata?.page && <span className="opacity-60">p.{chunk.metadata.page}</span>}
+        <span className="ml-1 opacity-40 font-mono">[{index + 1}]</span>
+      </button>
+
+      <AnimatePresence>
+        {show && (
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="absolute bottom-full left-0 mb-2 z-[500] w-80 pointer-events-none"
+          >
+            <div className="bg-[#111114] border border-white/10 rounded-2xl p-4 shadow-2xl shadow-black/50 backdrop-blur-xl">
+              {/* Header */}
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-8 h-8 rounded-lg bg-[#6366F1]/10 border border-[#6366F1]/20 flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-4 h-4 text-[#6366F1]" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-white truncate">{chunk.sourceName}</p>
+                  <p className="text-[10px] text-white/30 font-medium mt-0.5">
+                    {chunk.sourceType.toUpperCase()}
+                    {chunk.metadata?.page ? ` · Page ${chunk.metadata.page}` : ''}
+                    {chunk.metadata?.timestamp ? ` · ${chunk.metadata.timestamp}` : ''}
+                  </p>
+                </div>
+                <div className="ml-auto flex-shrink-0">
+                  <span className="text-[9px] font-bold text-[#6366F1] bg-[#6366F1]/10 px-1.5 py-0.5 rounded-md">{score}% match</span>
+                </div>
+              </div>
+
+              {/* Snippet */}
+              <div className="bg-white/[0.03] rounded-xl p-3 border border-white/5">
+                <p className="text-[11px] text-white/60 leading-relaxed line-clamp-4">
+                  {chunk.text || 'No preview available.'}
+                </p>
+              </div>
+
+              {/* Footer */}
+              {chunk.metadata?.url && (
+                <p className="mt-2 text-[9px] text-[#6366F1] truncate">{chunk.metadata.url}</p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export function AskAI() {
@@ -317,7 +396,8 @@ export function AskAI() {
     setIsStreaming(true);
     setStreamingAnswer('');
 
-    const history = messages.slice(-6).map(m => ({
+    // Pass last 12 messages (6 turns) for strong context
+    const history = messages.slice(-12).map(m => ({
       role: m.role,
       content: m.content,
     }));
@@ -341,8 +421,8 @@ export function AskAI() {
             capturedChunks = meta.retrievedChunks;
             setSelectedChunks(capturedChunks);
           }
-          // Store conversationId if it's a new chat
-          if (meta.conversationId && !activeConvId) {
+          // Sync conversationId on every new turn
+          if (meta.conversationId) {
             setActiveConvId(meta.conversationId);
             (window as any).currentConversationId = meta.conversationId;
           }
@@ -413,17 +493,16 @@ export function AskAI() {
                     : "bg-white/[0.03] border border-white/5 backdrop-blur-xl"
               )}>
                 <p className="text-sm leading-relaxed whitespace-pre-line font-medium">{msg.content}</p>
-                {msg.retrievedChunks && msg.retrievedChunks.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-white/5 flex flex-wrap gap-2">
-                    {msg.retrievedChunks.map((chunk, i) => {
-                      const Icon = sourceIcon(chunk.sourceType);
-                      return (
-                        <div key={i} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/5 text-[10px] text-white/40">
-                          <Icon className="w-3 h-3" />
-                          <span className="truncate max-w-[100px]">{chunk.sourceName}</span>
-                        </div>
-                      );
-                    })}
+
+                {/* Rich Citation Panel — shown for assistant messages with sources */}
+                {msg.role === 'assistant' && msg.retrievedChunks && msg.retrievedChunks.length > 0 && (
+                  <div className="mt-5 pt-4 border-t border-white/5 space-y-2">
+                    <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/20">Sources</p>
+                    <div className="flex flex-wrap gap-2">
+                      {msg.retrievedChunks.map((chunk, i) => (
+                        <CitationTooltip key={i} chunk={chunk} index={i} />
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

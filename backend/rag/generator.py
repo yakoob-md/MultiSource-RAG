@@ -112,24 +112,32 @@ def _build_messages(
     Returns:
         list of message dicts ready for Groq chat completions
     """
-    MAX_HISTORY_TURNS = 3   # last 3 turns = last 6 messages
+    MAX_HISTORY_TURNS = 6   # last 6 turns = last 12 messages for better context
 
     # ── Build context block ───────────────────────────────────────────────────
     context_parts = []
     for i, chunk in enumerate(chunks, start=1):
         ref    = _build_reference(chunk)
-        header = f"[{i}] Source: {chunk.source_title}"
+        header = f"[{i}] SOURCE: {chunk.source_title}"
         if ref:
-            header += f" ({ref})"
+            header += f" | {ref}"
         context_parts.append(f"{header}\n{chunk.chunk_text}")
 
-    context = "\n\n".join(context_parts)
+    context = "\n\n---\n\n".join(context_parts)
 
     # ── System message: instructions + context ────────────────────────────────
-    system_content = f"""You are a helpful AI assistant. Answer questions using ONLY the context provided below.
-If the answer is not in the context, say "I don't have enough information to answer this question."
-Always be specific and cite which source your answer comes from.
-When answering follow-up questions, use the conversation history to understand what the user is referring to.
+    system_content = f"""You are an expert research assistant with deep knowledge of the uploaded documents.
+
+Your job is to give DETAILED, ACCURATE, WELL-CITED answers based ONLY on the retrieved context below.
+
+RULES:
+1. Use the retrieved context as your ONLY source of truth.
+2. Cite every claim with [Source N] inline — e.g. "According to [Source 1]..."
+3. Give a thorough, structured answer — use headings, bullet points, and numbered lists where appropriate.
+4. If the question has multiple parts, answer each part separately.
+5. Quote directly from the source text when it is relevant.
+6. If the answer is not in the context, say: "The retrieved documents do not contain information about this."
+7. Use conversation history to resolve follow-up questions and pronouns ("it", "that case", etc.).
 
 RETRIEVED CONTEXT:
 {context}"""

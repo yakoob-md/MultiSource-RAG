@@ -1,21 +1,17 @@
-# backend/api/query.py — PHASE 2 UPDATED
-# Key changes:
-#   1. QueryRequest now accepts optional image_id and include_images flag
-#   2. Image captions are injected into the LLM context block
-#   3. conversation_id is fully wired (Phase 1)
-#   4. Duplicate endpoint conflict resolved — /query-stream removed here
+# backend/api/query.py — FIXED: Multi-source, context, and history
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from backend.rag.retriever import retrieve
-from backend.rag.generator import generate_answer, generate_answer_stream, _build_citations
-from backend.rag.query_classifier import classify_query
-from backend.rag.multi_retriever import multi_retrieve, retrieve_for_comparison, retrieve_for_synthesis, retrieve_single_source
+from backend.rag.generator import generate_answer_stream, _build_citations
+from backend.rag.query_classifier import classify_query, QueryAnalysis, extract_source_filter
+from backend.rag.multi_retriever import (
+    MultiSourceResult, multi_retrieve, retrieve_multi_selected, retrieve_single_source
+)
 from backend.rag.multi_generator import generate_multi_answer
-from backend.rag.image_rag import enrich_query_with_image_context   # ← Phase 2
+from backend.rag.image_rag import enrich_query_with_image_context
 from backend.database.connection import get_connection
-from backend.rag.query_classifier import extract_source_filter
 import uuid
 import json
 
@@ -32,10 +28,10 @@ class QueryRequest(BaseModel):
     source_ids      : list[str] | None = None
     history         : list[ChatMessageModel] | None = None
     mode            : str | None = None
-    conversation_id : str | None = None    # Phase 1
-    image_id        : str | None = None    # Phase 2 — ID of an uploaded image job
-    include_images  : bool = False         # Phase 2 — auto-include recent captions
-    llm_provider    : str | None = "groq"  # Phase 4 — toggle between 'groq' and 'huggingface'
+    conversation_id : str | None = None
+    image_id        : str | None = None
+    include_images  : bool = False
+    llm_provider    : str | None = "groq"
 
 
 def _history_to_dicts(history: list[ChatMessageModel] | None) -> list[dict] | None:
@@ -44,22 +40,108 @@ def _history_to_dicts(history: list[ChatMessageModel] | None) -> list[dict] | No
     return [{"role": m.role, "content": m.content} for m in history]
 
 
-# ── Helper: ensure conversation exists ───────────────────────────────────────
+def _safe_classify(question: str) -> QueryAnalysis:
+    """Always returns a valid QueryAnalysis, never raises."""
+    try:
+        return classify_query(question)
+    except Exception as e:
+        print(f"[Query] Classifier failed, using default: {e}")
+        return QueryAnalysis(
+            intent="single_source", source_types=["any"], topics=[],
+            ipc_sections=[], time_filter=None, language_hint="en",
+            requires_compare=False, requires_summary=False, source_names=[]
+        )
+
+
+def _do_retrieve(question: str, req_source_ids: list[str] | None, analysis: QueryAnalysis) -> MultiSourceResult:
+    """
+    THE RETRIEVAL ROUTER.
+    Priority:
+      1. User explicitly selected sources → use retrieve_multi_selected (CORE FEATURE)
+      2. Otherwise → let classifier intent decide
+    """
+    if req_source_ids and len(req_source_ids) > 0:
+        if len(req_source_ids) == 1:
+            # Single explicit source
+            return retrieve_single_source(question, source_ids=req_source_ids)
+        else:
+            # MULTI-SOURCE CONSOLIDATION — the core product feature
+            return retrieve_multi_selected(question, source_ids=req_source_ids)
+    else:
+        # No manual selection — let classifier decide
+        return multi_retrieve(question, analysis)
+
 
 def _ensure_conversation(cursor, conv_id: str | None, question: str) -> str:
-    """
-    If conv_id is None, auto-create a new conversation.
-    Returns the conversation id (existing or new).
-    """
     if conv_id:
         return conv_id
     new_id = str(uuid.uuid4())
-    title  = question[:60] + ("..." if len(question) > 60 else "")
-    cursor.execute(
-        "INSERT INTO conversations (id, title) VALUES (%s, %s)",
-        (new_id, title)
-    )
+    title = question[:60] + ("..." if len(question) > 60 else "")
+    cursor.execute("INSERT INTO conversations (id, title) VALUES (%s, %s)", (new_id, title))
     return new_id
+
+
+def _save_to_db(chat_id: str, conv_id: str, question: str, answer: str, source_ids_used: list[str]) -> None:
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO chat_history (id, question, answer, sources_used, conversation_id) VALUES (%s, %s, %s, %s, %s)",
+                (chat_id, question, answer, json.dumps(source_ids_used), conv_id)
+            )
+            cursor.execute("UPDATE conversations SET updated_at = NOW() WHERE id = %s", (conv_id,))
+            conn.commit()
+            print(f"[Query] Saved chat {chat_id[:8]} to conv {conv_id[:8]}")
+    except Exception as e:
+        print(f"[Query] DB save warning: {e}")
+
+
+def _pre_create_conv(conv_id: str | None, question: str) -> str:
+    """Pre-create a conversation row before streaming starts so meta event can carry real ID."""
+    if conv_id:
+        return conv_id
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            new_id = _ensure_conversation(cursor, None, question)
+            conn.commit()
+            return new_id
+    except Exception as e:
+        print(f"[Query] Pre-create conv warning: {e}")
+        return str(uuid.uuid4())
+
+
+def _format_chunks_out(chunks: list) -> list[dict]:
+    return [
+        {
+            "rank": i + 1,
+            "chunkId": c.chunk_id,
+            "sourceId": c.source_id,
+            "sourceType": c.source_type,
+            "sourceTitle": c.source_title,
+            "text": c.chunk_text,
+            "score": round(c.score, 4),
+            "pageNumber": c.page_number,
+            "timestampS": c.timestamp_s,
+            "urlRef": c.url_ref,
+            "language": c.language,
+        }
+        for i, c in enumerate(chunks)
+    ]
+
+
+def _format_citations_out(citations: list) -> list[dict]:
+    return [
+        {
+            "sourceId": c.source_id,
+            "sourceType": c.source_type,
+            "sourceTitle": c.source_title,
+            "reference": c.reference,
+            "snippet": c.snippet,
+            "score": round(c.score, 4),
+        }
+        for c in citations
+    ]
 
 
 # ── /query — standard non-streaming ──────────────────────────────────────────
@@ -70,126 +152,60 @@ def query(req: QueryRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
     history = _history_to_dicts(req.history)
-
-    # ── Phase 2: Enrich question with image context ───────────────────────────
     enriched_question, image_context_block = enrich_query_with_image_context(
-        req.question,
-        image_id      = req.image_id,
-        include_recent= req.include_images
+        req.question, image_id=req.image_id, include_recent=req.include_images
     )
 
-    # ── Step 1: Classify query ────────────────────────────────────────────────
-    try:
-        analysis = classify_query(enriched_question)
-        if req.mode and req.mode != "auto":
-            analysis.intent = {
-                "single": "single_source",
-                "compare": "comparison",
-                "synthesize": "synthesis"
-            }.get(req.mode, analysis.intent)
-    except Exception as e:
-        print(f"[Query] Classifier warning: {e}")
+    analysis = _safe_classify(enriched_question)
 
-    # ── Step 2: Retrieve ──────────────────────────────────────────────────────
     try:
-        multi_result = multi_retrieve(enriched_question, analysis)
+        multi_result = _do_retrieve(enriched_question, req.source_ids, analysis)
         chunks = multi_result.all_chunks
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
 
-    # Handle 0 results case
     if not chunks:
         return {
-            "chatId": str(uuid.uuid4()),
-            "conversationId": req.conversation_id,
-            "answer": "I searched your knowledge base but found no relevant information. \n This usually means: (1) no documents have been ingested yet, \n (2) your question doesn't match any uploaded content, or \n (3) the FAISS index is empty. \n Please upload a PDF or website first, then try again.",
-            "citations": [],
-            "retrievedChunks": [],
-            "query_intent": analysis.intent,
-            "imageContextUsed": bool(image_context_block)
+            "chatId": str(uuid.uuid4()), "conversationId": req.conversation_id,
+            "answer": "No relevant information found in the selected sources. Please check that documents have been uploaded and try a different question.",
+            "citations": [], "retrievedChunks": [], "query_intent": analysis.intent, "imageContextUsed": False
         }
 
-    # ── Step 3: Generate (inject image context into history if present) ───────
-    # We prepend image context as a system-level note in history
     augmented_history = list(history) if history else []
     if image_context_block:
-        augmented_history = [
-            {"role": "system", "content": image_context_block}
-        ] + augmented_history
+        augmented_history = [{"role": "system", "content": image_context_block}] + augmented_history
 
     try:
-        result = generate_multi_answer(enriched_question, multi_result, history=augmented_history, llm_provider=req.llm_provider)
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        result = generate_multi_answer(enriched_question, multi_result, history=augmented_history)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
-    # ── Step 4: Persist to DB ─────────────────────────────────────────────────
-    chat_id         = str(uuid.uuid4())
+    chat_id = str(uuid.uuid4())
     source_ids_used = list({c.source_id for c in chunks})
-    conv_id         = req.conversation_id
 
-    try:
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            conv_id = _ensure_conversation(cursor, conv_id, req.question)
+    conv_id = req.conversation_id or ""
+    if not conv_id:
+        try:
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                conv_id = _ensure_conversation(cursor, None, req.question)
+                conn.commit()
+        except Exception as e:
+            print(f"[Query] Conv create warning: {e}")
 
-            cursor.execute("""
-                INSERT INTO chat_history (id, question, answer, sources_used, conversation_id)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (chat_id, req.question, result.answer,
-                  json.dumps(source_ids_used), conv_id))
-
-            cursor.execute(
-                "UPDATE conversations SET updated_at = NOW() WHERE id = %s",
-                (conv_id,)
-            )
-            conn.commit()
-    except Exception as e:
-        print(f"[Query] Warning: Could not save: {e}")
-
-    # ── Step 5: Build response ────────────────────────────────────────────────
-    citations_out = [
-        {
-            "sourceId"   : c.source_id,
-            "sourceType" : c.source_type,
-            "sourceTitle": c.source_title,
-            "reference"  : c.reference,
-            "snippet"    : c.snippet,
-            "score"      : round(c.score, 4),
-        }
-        for c in result.citations
-    ]
-
-    chunks_out = [
-        {
-            "rank"       : i + 1,
-            "chunkId"    : c.chunk_id,
-            "sourceId"   : c.source_id,
-            "sourceType" : c.source_type,
-            "sourceTitle": c.source_title,
-            "text"       : c.chunk_text,
-            "score"      : round(c.score, 4),
-            "pageNumber" : c.page_number,
-            "timestampS" : c.timestamp_s,
-            "urlRef"     : c.url_ref,
-            "language"   : c.language,
-        }
-        for i, c in enumerate(result.chunks)
-    ]
+    _save_to_db(chat_id, conv_id, req.question, result.answer, source_ids_used)
 
     return {
-        "chatId"          : chat_id,
-        "conversationId"  : conv_id,      # Phase 1
-        "answer"          : result.answer,
-        "citations"       : citations_out,
-        "retrievedChunks" : chunks_out,
-        "query_intent"    : analysis.intent,
-        "imageContextUsed": bool(image_context_block),  # Phase 2 flag
+        "chatId": chat_id, "conversationId": conv_id,
+        "answer": result.answer,
+        "citations": _format_citations_out(result.citations),
+        "retrievedChunks": _format_chunks_out(result.chunks),
+        "query_intent": analysis.intent,
+        "imageContextUsed": bool(image_context_block),
     }
 
 
-# ── /query-stream — SSE streaming ────────────────────────────────────────────
+# ── /query-stream — SSE streaming (PRIMARY PATH) ─────────────────────────────
 
 @router.post("/query-stream")
 def query_stream(req: QueryRequest):
@@ -197,78 +213,45 @@ def query_stream(req: QueryRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
     history = _history_to_dicts(req.history)
-
-    # Phase 2: enrich question with image context
     enriched_question, image_context_block = enrich_query_with_image_context(
-        req.question,
-        image_id      = req.image_id,
-        include_recent= req.include_images
+        req.question, image_id=req.image_id, include_recent=req.include_images
     )
 
-    # Step 1: Classify
-    try:
-        analysis = classify_query(enriched_question)
-    except:
-        from backend.rag.query_classifier import QueryAnalysis
-        analysis = QueryAnalysis(intent="single_source", source_types=["any"])
+    # 1. Classify
+    analysis = _safe_classify(enriched_question)
 
-    # Step 2: Retrieve
+    # 2. Retrieve — uses source_ids if provided
     try:
-        multi_result = multi_retrieve(enriched_question, analysis)
+        multi_result = _do_retrieve(enriched_question, req.source_ids, analysis)
         chunks = multi_result.all_chunks
+        print(f"[QueryStream] Retrieved {len(chunks)} chunks from {multi_result.source_count} sources")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
 
-    # Build citations + chunk output upfront (sent in meta event)
-    citations_out = []
-    for c in _build_citations(chunks):
-        citations_out.append({
-            "sourceId"   : c.source_id,
-            "sourceType" : c.source_type,
-            "sourceTitle": c.source_title,
-            "reference"  : c.reference,
-            "snippet"    : c.snippet,
-            "score"      : round(c.score, 4),
-        })
-
-    chunks_out = [
-        {
-            "rank"       : i + 1,
-            "chunkId"    : c.chunk_id,
-            "sourceId"   : c.source_id,
-            "sourceType" : c.source_type,
-            "sourceTitle": c.source_title,
-            "text"       : c.chunk_text,
-            "score"      : round(c.score, 4),
-            "pageNumber" : c.page_number,
-            "timestampS" : c.timestamp_s,
-            "urlRef"     : c.url_ref,
-            "language"   : c.language,
-        }
-        for i, c in enumerate(chunks)
-    ]
-
+    # 3. Pre-create conversation so meta event has a real conv_id
     chat_id = str(uuid.uuid4())
-    conv_id_holder = [req.conversation_id]  # mutable container for closure
+    conv_id = _pre_create_conv(req.conversation_id, req.question)
 
-    # Augment history with image context
+    # 4. Build meta payload (sent immediately before first token)
+    citations_out = _format_citations_out(_build_citations(chunks))
+    chunks_out = _format_chunks_out(chunks)
+
+    # 5. Build augmented history
     augmented_history = list(history) if history else []
     if image_context_block:
-        augmented_history = [
-            {"role": "system", "content": image_context_block}
-        ] + augmented_history
+        augmented_history = [{"role": "system", "content": image_context_block}] + augmented_history
 
     def event_stream():
-        # Event 1: meta (sources panel renders immediately)
-        yield f"data: {json.dumps({'type': 'meta', 'chatId': chat_id, 'citations': citations_out, 'retrievedChunks': chunks_out, 'conversationId': conv_id_holder[0]})}\n\n"
+        # ── Meta event: sent first so UI populates sources panel immediately ──
+        yield f"data: {json.dumps({'type': 'meta', 'chatId': chat_id, 'conversationId': conv_id, 'citations': citations_out, 'retrievedChunks': chunks_out, 'sourceCount': multi_result.source_count})}\n\n"
 
+        # ── Empty result ─────────────────────────────────────────────────────
         if not chunks:
-            msg = "I searched your knowledge base but found no relevant information. \n This usually means: (1) no documents have been ingested yet, \n (2) your question doesn't match any uploaded content, or \n (3) the FAISS index is empty. \n Please upload a PDF or website first, then try again."
-            yield f"data: {json.dumps({'type': 'token', 'content': msg})}\n\n"
+            yield f"data: {json.dumps({'type': 'token', 'content': 'No relevant information found in the selected sources. Please check that documents have been uploaded and try a different question.'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
-        # Events 2-N: token stream
+        # ── Token stream ─────────────────────────────────────────────────────
         collected = []
         try:
             for token in generate_answer_stream(enriched_question, chunks, history=augmented_history, llm_provider=req.llm_provider):
@@ -278,30 +261,13 @@ def query_stream(req: QueryRequest):
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
             return
 
+        # ── Done event ────────────────────────────────────────────────────────
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
-        # Persist after stream
-        full_answer     = "".join(collected).strip()
+        # ── Persist to DB after stream ────────────────────────────────────────
+        full_answer = "".join(collected).strip()
         source_ids_used = list({c.source_id for c in chunks})
-        try:
-            with get_connection() as conn:
-                cursor = conn.cursor()
-                actual_conv_id = _ensure_conversation(cursor, conv_id_holder[0], req.question)
-                conv_id_holder[0] = actual_conv_id
-
-                cursor.execute("""
-                    INSERT INTO chat_history (id, question, answer, sources_used, conversation_id)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (chat_id, req.question, full_answer,
-                      json.dumps(source_ids_used), actual_conv_id))
-
-                cursor.execute(
-                    "UPDATE conversations SET updated_at = NOW() WHERE id = %s",
-                    (actual_conv_id,)
-                )
-                conn.commit()
-        except Exception as e:
-            print(f"[QueryStream] Warning: {e}")
+        _save_to_db(chat_id, conv_id, req.question, full_answer, source_ids_used)
 
     return StreamingResponse(
         event_stream(),
@@ -310,59 +276,43 @@ def query_stream(req: QueryRequest):
     )
 
 
+# ── /query/debug — Diagnostic ─────────────────────────────────────────────────
+
 @router.get("/query/debug")
 def query_debug(question: str = "test query"):
-    """
-    Diagnostic endpoint to trace exactly what FAISS and MySQL are returning.
-    Usage: GET /query/debug?question=my+test+query
-    """
+    """GET /query/debug?question=... — trace FAISS + MySQL pipeline."""
     from backend.ingestion.embedder import embed_query
     from backend.vectorstore.faiss_store import search_vectors, get_stats
-    from backend.database.connection import get_connection
     import os
 
-    results = {
-        "question": question,
-        "faiss_stats": get_stats(),
-        "steps": []
-    }
+    results = {"question": question, "faiss_stats": get_stats(), "steps": []}
 
     try:
-        # 1. Embed
         results["steps"].append("1. Embedding query...")
         vec = embed_query(question)
-        
-        # 2. Search FAISS
+
         results["steps"].append("2. Searching FAISS...")
         raw_hits = search_vectors(vec, top_k=5)
         results["faiss_hits"] = raw_hits
 
         if not raw_hits:
-            results["steps"].append("⚠️ FAISS returned 0 hits.")
+            results["steps"].append("WARNING: FAISS returned 0 hits.")
             return results
 
-        # 3. Query MySQL
         results["steps"].append(f"3. Querying MySQL for {len(raw_hits)} IDs...")
         chunk_ids = [h["chunk_id"] for h in raw_hits]
         placeholders = ", ".join(["%s"] * len(chunk_ids))
-        
         with get_connection() as conn:
             cursor = conn.cursor(dictionary=True)
-            cursor.execute(f"""
-                SELECT id, source_id, chunk_text as snippet 
-                FROM chunks 
-                WHERE id IN ({placeholders})
-            """, chunk_ids)
+            cursor.execute(f"SELECT id, source_id, chunk_text FROM chunks WHERE id IN ({placeholders})", chunk_ids)
             db_rows = cursor.fetchall()
-            # Truncate snippet for visibility
             for r in db_rows:
-                if r['snippet']:
-                    r['snippet'] = r['snippet'][:100] + "..."
+                r["snippet"] = (r.get("chunk_text") or "")[:100] + "..."
+                r.pop("chunk_text", None)
             results["db_rows"] = db_rows
-            results["steps"].append(f"✅ Found {len(db_rows)} matching rows in DB.")
+            results["steps"].append(f"Found {len(db_rows)} matching rows in DB.")
 
     except Exception as e:
         results["error"] = str(e)
-        results["steps"].append(f"❌ FAILED at step {len(results['steps'])}")
 
     return results
