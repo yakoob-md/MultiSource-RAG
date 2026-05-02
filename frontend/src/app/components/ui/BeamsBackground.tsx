@@ -1,8 +1,6 @@
-"use client";
-
-import { useEffect, useRef } from "react";
-import { motion } from "motion/react";
-import { cn } from "@/lib/utils";
+import React, { useEffect, useRef } from "react";
+import { motion } from "framer-motion";
+import { cn } from "./utils";
 
 interface AnimatedGradientBackgroundProps {
     className?: string;
@@ -42,6 +40,7 @@ function createBeam(width: number, height: number): Beam {
 export function BeamsBackground({
     className,
     intensity = "strong",
+    children
 }: AnimatedGradientBackgroundProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const beamsRef = useRef<Beam[]>([]);
@@ -69,7 +68,7 @@ export function BeamsBackground({
             canvas.style.height = `${window.innerHeight}px`;
             ctx.scale(dpr, dpr);
 
-            const totalBeams = MINIMUM_BEAMS * 1.5;
+            const totalBeams = Math.floor(MINIMUM_BEAMS * 1.5);
             beamsRef.current = Array.from({ length: totalBeams }, () =>
                 createBeam(canvas.width, canvas.height)
             );
@@ -101,7 +100,6 @@ export function BeamsBackground({
             ctx.translate(beam.x, beam.y);
             ctx.rotate((beam.angle * Math.PI) / 180);
 
-            // Calculate pulsing opacity
             const pulsingOpacity =
                 beam.opacity *
                 (0.8 + Math.sin(beam.pulse) * 0.2) *
@@ -109,7 +107,6 @@ export function BeamsBackground({
 
             const gradient = ctx.createLinearGradient(0, 0, 0, beam.length);
 
-            // Enhanced gradient with multiple color stops
             gradient.addColorStop(0, `hsla(${beam.hue}, 85%, 65%, 0)`);
             gradient.addColorStop(
                 0.1,
@@ -145,7 +142,6 @@ export function BeamsBackground({
                 beam.y -= beam.speed;
                 beam.pulse += beam.pulseSpeed;
 
-                // Reset beam when it goes off screen
                 if (beam.y + beam.length < -100) {
                     resetBeam(beam, index, totalBeams);
                 }
@@ -194,27 +190,8 @@ export function BeamsBackground({
                 }}
             />
 
-            <div className="relative z-10 flex h-screen w-full items-center justify-center">
-                <div className="flex flex-col items-center justify-center gap-6 px-4 text-center">
-                    <motion.h1
-                        className="text-6xl md:text-7xl lg:text-8xl font-semibold text-white tracking-tighter"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.8 }}
-                    >
-                        Beams
-                        <br />
-                        Background
-                    </motion.h1>
-                    <motion.p
-                        className="text-lg md:text-2xl lg:text-3xl text-white/70 tracking-tighter"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.8 }}
-                    >
-                        For your pleasure
-                    </motion.p>
-                </div>
+            <div className="relative z-10 h-full w-full">
+                {children}
             </div>
         </div>
     );
