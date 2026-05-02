@@ -3,10 +3,11 @@ import { LiquidCursor } from '../LiquidCursor';
 import { ArrowRight, Hexagon, Shield, Zap } from 'lucide-react';
 
 export function Landing() {
+  console.log('Landing mounting...');
   return (
     <div className="relative min-h-screen bg-black overflow-hidden flex flex-col items-center justify-center font-sans">
       {/* Dynamic Cursor Background */}
-      <LiquidCursor />
+      {/* <LiquidCursor /> */}
 
       {/* Grid Pattern Overlay */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none" />

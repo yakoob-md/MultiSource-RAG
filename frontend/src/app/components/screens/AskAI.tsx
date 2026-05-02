@@ -132,6 +132,7 @@ function TypingDots() {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export function AskAI() {
+  console.log('AskAI mounting...');
   // ── Conversation state ────────────────────────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
