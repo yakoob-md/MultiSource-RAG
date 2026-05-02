@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, useCallback, useTransition } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useTransition } from 'react';
 import {
   Send, RotateCcw, Loader2, FileText, Globe, Youtube,
   Plus, MessageSquare, Trash2, Edit2, Check, X,
   ChevronLeft, ChevronRight, ExternalLink, Paperclip, Image as ImageIcon,
-  Database, Upload, Link as LinkIcon, Video, Command, Send as SendIcon, X as XIcon, Loader as LoaderIcon, Sparkles, Figma, Monitor as MonitorIcon
+  Database, Upload, Link as LinkIcon, Video, Command, Send as SendIcon, X as XIcon, Loader as LoaderIcon, Sparkles, Figma, Monitor as MonitorIcon, Clock, Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router';
@@ -132,7 +132,6 @@ function TypingDots() {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export function AskAI() {
-  console.log('AskAI mounting...');
   // ── Conversation state ────────────────────────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
