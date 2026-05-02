@@ -26,7 +26,7 @@ def upload_model():
             print("❌ Repo ID is required.")
             sys.exit(1)
 
-    model_dir = Path(__file__).resolve().parent.parent / "models" / "legal_model_lora"
+    model_dir = Path(__file__).resolve().parent.parent / "models" / "final_model"
     if not model_dir.exists():
         print(f"❌ Error: Model directory not found at {model_dir}")
         print("Ensure you have run your fine-tuning script and saved the model.")
