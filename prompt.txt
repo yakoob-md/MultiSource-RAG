@@ -1,250 +1,179 @@
-You are a senior AI architect and full-stack engineer with deep expertise in RAG systems, LLM fine-tuning, multi-modal AI, and scalable chat applications.
+You are a senior AI systems engineer, QA auditor, and DevOps expert specializing in RAG systems, LLM deployment, Hugging Face integration, and multi-modal AI pipelines.
 
-I will provide you with my GitHub repository and project files.
+I will provide you with my full project repository and files.
 
-Your job is to perform a COMPLETE TECHNICAL AUDIT and then GUIDE ME STEP-BY-STEP on what to build next.
-
----
-
-## 🚨 CONTEXT (IMPORTANT)
-
-This project is a **Multi-Source RAG System** that:
-
-* Uses PDFs, websites, and YouTube transcripts as knowledge sources
-* Uses embeddings + vector DB for retrieval
-* Uses a fine-tuned LLM for answering
-* Will also include image understanding
-
-The goal is to build a system similar to ChatGPT.
+Your job is NOT just to review — your job is to VERIFY, TEST LOGICALLY, and ENSURE EVERYTHING WORKS END-TO-END.
 
 ---
 
-## 🎯 FINAL SYSTEM REQUIREMENTS
+## 🚨 PROJECT CONTEXT
 
-The final system MUST:
+This is a **Multi-Source RAG-based AI system** that:
 
-### 1. Chat System (ChatGPT-like)
-
-* Multiple chats (like ChatGPT sidebar)
-* Each chat has memory and context
-* Ability to reopen old chats and continue conversation
-* Context must persist correctly
-
----
-
-### 2. Multi-Source RAG
-
-* User can select sources dynamically:
-
-  * PDFs
-  * URLs
-  * YouTube videos
-* System retrieves only relevant chunks
-* Context should remain clean and not overloaded
+* Uses PDFs, websites, and YouTube transcripts
+* Uses embeddings + vector database for retrieval
+* Uses a fine-tuned LLM (already trained)
+* Will integrate an image model (via Hugging Face API)
+* Has a frontend (React or Streamlit) + backend (Node/Flask)
 
 ---
 
-### 3. Multi-Modal Support
+## 🎯 YOUR OBJECTIVES
 
-* User can upload images
-* Image + text + documents should work together
-* Image understanding should integrate into final answer
+### 1. FULL SYSTEM VERIFICATION (VERY IMPORTANT)
 
----
+You must:
 
-### 4. Model Integration
+* Trace COMPLETE data flow from input → output
+* Verify each module works logically even if not executed
 
-* Fine-tuned model (already trained) should be used
-* Embedding model should be efficient and accurate
-* Image model should integrate smoothly
-* All models must work together with minimal latency
+Check:
 
----
+* Data ingestion (PDF / URL / YouTube)
+* Chunking and embeddings
+* Vector DB storage and retrieval
+* Query pipeline
+* Prompt construction
+* Model inference
+* Response formatting
+* Citation generation
 
-### 5. Accuracy & Safety
+For each part:
 
-* Answers MUST be grounded in retrieved data
-* If answer is not found → explicitly say:
-  “I don’t have enough information to answer that”
-* NO hallucinations
-
----
-
-### 6. Citations (CRITICAL)
-
-* Every answer must include:
-
-  * Source name (PDF / URL / video)
-  * Chunk reference or section
-* Citations must be clearly visible in UI
+* Identify bugs or risks
+* Confirm if it will work in real usage
 
 ---
 
-### 7. UI/UX (ChatGPT-level)
+### 2. INTEGRATION VALIDATION
 
-* Clean, modern interface
-* Sidebar with chat history
-* Resource selection panel
-* Smooth chat experience
-* Professional design (not basic Streamlit feel)
+Ensure that the following components integrate correctly:
 
----
+* Embedding model (local CPU)
+* Fine-tuned model (to be deployed on Hugging Face)
+* Image model (Hugging Face API)
 
-### 8. Performance
+You must:
 
-* System should respond within 3–10 seconds ideally
-* Avoid unnecessary API calls
-* Efficient retrieval and prompt construction
+* Identify bottlenecks
+* Suggest fixes for latency and failures
 
 ---
 
-## 🔍 YOUR TASK
+### 3. FAILURE & EDGE CASE ANALYSIS
 
-### STEP 1: REPO AUDIT
+Simulate real-world usage and identify:
 
-Analyze the entire repository and explain:
+* What breaks when:
 
-* What is already implemented
-* What is partially implemented
-* What is missing
-* Architecture issues
-* Code quality issues
-* Performance bottlenecks
-* Any incorrect design decisions
+  * Multiple users query
+  * Large documents are used
+  * Image + text combined query
+* API failure scenarios
+* Timeout issues
+* Context overflow issues
 
-Be brutally honest and specific.
-
----
-
-### STEP 2: GAP ANALYSIS
-
-Compare current implementation vs FINAL REQUIREMENTS.
-
-Clearly list:
-
-* Missing features
-* Weak components
-* Risks
+Provide solutions for each.
 
 ---
 
-### STEP 3: SYSTEM DESIGN FIX
+### 4. HUGGING FACE DEPLOYMENT GUIDE (STEP-BY-STEP)
 
-Redesign the system architecture if needed.
+Explain EXACTLY how I should:
 
-Include:
+#### A. Upload my fine-tuned model to Hugging Face
 
-* Backend architecture
-* Model flow (RAG + image + LLM)
-* Chat memory system
-* API design
-* Data flow
-
----
-
-### STEP 4: IMPLEMENTATION ROADMAP
-
-Give a **step-by-step execution plan**:
-
-For each step:
-
-* What to build
-* Where to build (file/module)
-* Tools/libraries to use
-* Expected output
+* Folder structure
+* Required files (config, tokenizer, model weights)
+* Commands to push model
+* How to test it
 
 ---
 
-### STEP 5: CRITICAL IMPROVEMENTS
+#### B. Use it via API
 
-Suggest:
-
-* Better embedding models
-* Better retrieval techniques (reranking, hybrid search)
-* Latency optimizations
-* Prompt engineering improvements
+* Example API call (Python + JS)
+* How to handle authentication
+* How to structure prompts
 
 ---
 
-### STEP 6: UI IMPROVEMENTS
+#### C. Integrate into my backend
 
-Suggest:
-
-* Layout structure
-* Components needed
-* UX improvements
-* How to make it ChatGPT-like
+* Where to call API in pipeline
+* How to pass RAG context
+* How to handle errors
 
 ---
 
-### STEP 7: FINAL VERDICT
+### 5. IMAGE MODEL INTEGRATION (CRITICAL)
 
-Rate the project on:
+Guide me on:
 
-* Practicality
-* Industry relevance
-* Resume impact
-* Scalability
+* Which image model to use (best tradeoff: quality vs speed)
+* How to call it via Hugging Face API
+* How to convert image → text (caption or reasoning)
+* How to inject that into RAG pipeline
+
+Explain full flow:
+User image → model → output → combined with RAG → final answer
 
 ---
 
-## ⚠️ IMPORTANT RULES
+### 6. PERFORMANCE OPTIMIZATION
 
-* Do NOT give generic advice
-* Do NOT skip steps
-* Be highly technical but clear
+Give specific improvements for:
+
+* Reducing latency
+* Reducing API calls
+* Efficient chunk selection
+* Prompt size optimization
+* Parallel vs sequential execution
+
+---
+
+### 7. CITATION SYSTEM VALIDATION
+
+Verify:
+
+* Whether citations are correctly mapped to sources
+* Whether chunk tracking is reliable
+
+If not:
+
+* Redesign citation pipeline
+
+---
+
+### 8. FINAL SYSTEM CHECK
+
+Answer clearly:
+
+* Will this system work end-to-end? (YES/NO)
+* What are the biggest risks?
+* What must be fixed BEFORE deployment?
+
+---
+
+### 9. ACTION PLAN
+
+Give a **step-by-step checklist**:
+
+* What to fix first
+* What to implement next
+* What to test
+* What to deploy
+
+---
+
+## ⚠️ STRICT RULES
+
+* Be extremely specific (no generic advice)
 * Assume I will implement everything you say
-* Focus on real-world deployment readiness
+* Think like a production engineer, not a student
+* Focus on real-world reliability
+* Highlight critical mistakes immediately
 
 ---
 
-Now analyze my repository and guide me.
-
-
-I am thinking to do this : 
-do u think it is feasible and the right thing to do 
-u need to be extremely creative and practical when thinking about strategy:
-
-Recommended FINAL STACK (Best for YOU)
-🔥 Option 1 (Easiest + Stable)
-Image → BLIP (HF API)
-Embeddings → CPU (sentence-transformers)
-LLM → HF API (your fine-tuned model)
-
-✔ Works
-✔ Simple
-❌ Slow (~20–40 sec)
-
-🔥 Option 2 (BEST balance)
-Image → BLIP (HF API)
-Embeddings → CPU
-LLM → LOCAL (RTX 2050, quantized)
-
-✔ Faster (~5–15 sec)
-✔ More control
-✔ No API limits on LLM
-
-⚠️ Important Rules (Don’t ignore)
-1️⃣ Never send full PDF
-Only send top 2–3 chunks
-2️⃣ Keep image output short
-1–2 line description only
-3️⃣ Don’t overload GPU
-Only ONE model on GPU
-🧠 What will your response quality be?
-
-👉 If you follow above setup:
-
-✔ Image understanding → good
-✔ Text reasoning → strong
-✔ Combined answer → solid
-
-👉 You will NOT lose quality
-
-🔥 Final Verdict
-
-👉 Yes, your system will work
-👉 BUT:
-
-❌ Not if you run everything on GPU
-✔ Works perfectly with hybrid setup
+Now analyze my project and ensure it is fully working and production-ready.
