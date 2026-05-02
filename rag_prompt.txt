@@ -1,31 +1,315 @@
-AUDIT
-✅ What's Already Built (Good Work)
+You are a senior AI architect, full-stack engineer, and product designer specializing in RAG systems, multi-modal AI, and ChatGPT-like applications.
 
-Hybrid retrieval (FAISS + BM25 + cross-encoder reranking)
-Multi-source ingestion (PDF, URL, YouTube)
-Legal RAG pipeline with specialized chunking
-Streaming responses via SSE
-Basic chat history (MySQL)
-Image upload + LLaVA captioning queue
-Fine-tuning pipeline (Kaggle + Unsloth)
+You are NOT just reviewing — your job is to DESIGN, IMPLEMENT, VERIFY, and TEST the entire system end-to-end based on my requirements.
 
-⚠️ What's Broken or Missing
-CRITICAL GAPS:
+I will provide my repository. You must modify and extend it to fully meet the following product behavior.
 
-No persistent multi-chat system — you have one flat chat history, not ChatGPT-style "conversations"
-Chat memory broken — history is sent from frontend but not stored per-conversation
-Image understanding not integrated into RAG — captions exist but never flow into answers
-Citations UI is weak — snippets shown but no clickable source links
-/query/stream and /query-stream are DUPLICATE endpoints — one in stream.py, one in query.py — this will cause confusion
-LLM provider hybrid logic — fine-tuned model integration exists but is never actually called in the main query flow
+---
 
+# 🚨 CORE GOAL
 
-STEP 2: GAP ANALYSIS vs Your Requirements
-RequirementStatusMultiple chats (sidebar)❌ MissingChat memory per conversation❌ MissingReopen old chats❌ MissingDynamic source selection✅ DoneImage + text in answer❌ Not integratedCitations in UI⚠️ PartialChatGPT-level UX❌ Needs workGrounded answers✅ Done
+Build a **ChatGPT-like multi-modal RAG system** with:
 
-STEP 3: WHAT WE BUILD NOW
-Here's the plan — incremental, one step at a time:
-Phase 1: Multi-Chat System (Database + Backend)
-Phase 2: Connect image captions to RAG
-Phase 3: Fix citations UI
-Phase 4: ChatGPT-like sidebar
+* Multi-chat support
+* Context memory per chat
+* Resource-based querying (PDF, URL, YouTube)
+* Image + text querying
+* Accurate answers with strict citation
+* Clean, professional UI
+
+---
+
+# 🧩 FEATURE REQUIREMENTS (VERY DETAILED)
+
+## 🔹 1. LEGAL AI SECTION (RESOURCE-BASED QUERYING)
+
+### UI Requirements:
+
+* Display all uploaded resources grouped by type:
+
+  * Judgements
+  * Books
+  * PDFs
+  * URLs
+  * YouTube
+
+* Pagination:
+
+  * Show 3–4 resources per page
+  * “Next” / “Previous” navigation
+
+* Each resource card must show:
+
+  * Name
+  * Metadata (source type, date, etc.)
+  * Brief summary (auto-generated)
+
+---
+
+### Selection Behavior:
+
+* User can select multiple resources (checkbox-based)
+* Selected resources must be visibly shown in UI (selected panel)
+
+---
+
+### Backend Logic:
+
+IF user selects resources:
+
+* Only use those selected resources for retrieval
+* Load ONLY their chunks into query pipeline
+
+IF user selects NOTHING:
+
+* Perform global RAG across all resources
+
+---
+
+### Query Behavior:
+
+* User asks question
+* System retrieves chunks ONLY from selected resources
+* Answer must be:
+
+  * Context-aware
+  * Grounded
+  * With citations
+
+---
+
+## 🔹 2. RESOURCE UPLOAD FLOW (UX CRITICAL)
+
+When user uploads:
+
+* PDF
+* URL
+* YouTube video
+
+System MUST:
+
+1. Process immediately (chunk + embed + store)
+2. Then prompt user:
+   “Do you want to start chatting with this resource?”
+
+IF YES:
+
+* Create NEW CHAT
+* Automatically attach that resource
+* Start conversation
+
+IF NO:
+
+* Return to dashboard
+
+---
+
+## 🔹 3. CHAT SYSTEM (ChatGPT-like)
+
+### Behavior:
+
+* Every new query creates or continues a chat
+* Chats are stored persistently (DB)
+
+---
+
+### Requirements:
+
+* Sidebar with chat history
+* Each chat:
+
+  * Has its own context
+  * Can be reopened
+  * Can continue conversation
+
+---
+
+### Backend:
+
+* Maintain chat memory
+* Store:
+
+  * Messages
+  * Selected resources
+  * Context
+
+---
+
+## 🔹 4. ASK AI SECTION (GLOBAL CHAT)
+
+* If user enters Ask AI:
+
+  * New chat is created automatically
+* Chat behaves like ChatGPT
+
+---
+
+## 🔹 5. MULTI-MODAL (IMAGE + TEXT)
+
+User can:
+
+* Upload image along with question
+
+System must:
+
+1. Send image → image model (Hugging Face)
+2. Convert to text description
+3. Combine with:
+
+   * User query
+   * Retrieved chunks
+4. Send to final LLM
+
+---
+
+### Example Flow:
+
+User:
+“What is happening in this image and is it related to this case?”
+
+Pipeline:
+Image → caption → merged with RAG context → LLM → answer
+
+---
+
+## 🔹 6. MODEL INTEGRATION
+
+You must integrate:
+
+* Embedding model → local CPU
+* Vector DB → for retrieval
+* Fine-tuned model → Hugging Face API OR local
+* Image model → Hugging Face API
+
+---
+
+### Requirements:
+
+* Efficient pipeline
+* Minimal latency
+* No redundant calls
+
+---
+
+## 🔹 7. CITATION SYSTEM (CRITICAL)
+
+Every answer MUST include:
+
+* Source name
+* Type (PDF / URL / Video)
+* Chunk reference or section
+
+---
+
+### UI:
+
+* Display citations clearly under answer
+* Clickable if possible
+
+---
+
+## 🔹 8. ACCURACY RULE
+
+If answer not found:
+
+System MUST say:
+“I don’t have enough information to answer that.”
+
+NO hallucinations.
+
+---
+
+## 🔹 9. PERFORMANCE RULES
+
+* Response time target: 3–10 seconds
+* Limit chunks to top 3–5
+* Optimize prompt size
+
+---
+
+# 🔍 YOUR TASK
+
+## STEP 1: IMPLEMENTATION
+
+Modify backend + frontend to implement ALL features above.
+
+For each feature:
+
+* Provide exact code changes
+* File-level modifications
+* New components if needed
+
+---
+
+## STEP 2: SYSTEM FLOW DESIGN
+
+Explain full pipeline:
+
+User → UI → Backend → Models → Response
+
+Include:
+
+* Data flow
+* API calls
+* Model interaction
+
+---
+
+## STEP 3: TESTING PLAN (VERY IMPORTANT)
+
+You MUST provide:
+
+### Test cases:
+
+1. Resource selection test
+2. No selection (global RAG)
+3. Multi-PDF query
+4. Image + PDF query
+5. Chat memory test
+6. Upload → immediate chat test
+7. Citation correctness test
+
+---
+
+### For each test:
+
+* Input
+* Expected output
+* What could fail
+* How to debug
+
+---
+
+## STEP 4: FAILURE HANDLING
+
+Identify:
+
+* API failure
+* Timeout
+* Empty retrieval
+* Large context
+
+Provide solutions.
+
+---
+
+## STEP 5: FINAL VERIFICATION
+
+Answer:
+
+* Does system fully meet requirements? (YES/NO)
+* What is still missing?
+* What must be fixed before deployment?
+
+---
+
+## ⚠️ STRICT RULES
+
+* Do NOT skip any feature
+* Do NOT give generic advice
+* Give IMPLEMENTABLE steps
+* Assume production-level quality is required
+
+---
+
+Now implement and guide me step-by-step.

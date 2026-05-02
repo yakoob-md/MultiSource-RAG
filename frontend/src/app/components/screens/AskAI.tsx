@@ -2,10 +2,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Send, RotateCcw, Loader2, FileText, Globe, Youtube,
   Plus, MessageSquare, Trash2, Edit2, Check, X,
-  ChevronLeft, ChevronRight, ExternalLink
+  ChevronLeft, ChevronRight, ExternalLink, Paperclip, Image as ImageIcon
 } from 'lucide-react';
 import { ChatMessage, RetrievedChunk, KnowledgeSource } from '../../types';
-import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, createConversation, deleteConversation, renameConversation, Conversation } from '../../api';
+import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, createConversation, deleteConversation, renameConversation, Conversation, uploadImage } from '../../api';
 
 export function AskAI() {
   // ── Conversation state ────────────────────────────────────────────────────
@@ -28,6 +28,12 @@ export function AskAI() {
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
   const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set());
   const [llmProvider, setLlmProvider] = useState<string>('groq');
+  
+  // ── Image Upload state ─────────────────────────────────────────────────────
+  const [activeImageId, setActiveImageId] = useState<string | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -113,6 +119,31 @@ export function AskAI() {
     }
   };
 
+  // ── Image Upload logic ────────────────────────────────────────────────────
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingImage(true);
+    setImagePreviewUrl(URL.createObjectURL(file));
+
+    try {
+      const res = await uploadImage(file);
+      setActiveImageId(res.image_id);
+    } catch (err: any) {
+      setError(err.message || "Image upload failed");
+      setImagePreviewUrl(null);
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const removeImage = () => {
+    setActiveImageId(null);
+    setImagePreviewUrl(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   // ── Submit question ───────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,10 +199,13 @@ export function AskAI() {
           }
         },
         (err) => { throw err; },
-        undefined, // imageId
-        false,     // includeImages
+        activeImageId || undefined, // imageId
+        true,                      // includeImages (Phase 2 default)
         llmProvider
       );
+
+      // Reset image state after sending
+      removeImage();
 
       const aiMsg: ChatMessage = {
         id: `msg-${Date.now() + 1}`,
@@ -409,9 +443,30 @@ export function AskAI() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
+        {/* Input Area */}
         <div className="p-8 bg-white dark:bg-[#0F172A] border-t border-gray-200 dark:border-gray-800">
           <form onSubmit={handleSubmit} className="max-w-4xl mx-auto relative">
+            
+            {/* Image Preview */}
+            {imagePreviewUrl && (
+              <div className="mb-4 relative w-32 h-32 rounded-2xl overflow-hidden border-2 border-[#6366F1] shadow-lg group">
+                <img src={imagePreviewUrl} alt="Upload preview" className="w-full h-full object-cover" />
+                {isUploadingImage ? (
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                    <Loader2 className="w-6 h-6 animate-spin text-white" />
+                  </div>
+                ) : (
+                  <button 
+                    type="button"
+                    onClick={removeImage}
+                    className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="flex justify-between items-center mb-3 px-2">
                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                   <span>Model:</span>
@@ -425,13 +480,22 @@ export function AskAI() {
                   </select>
                </div>
             </div>
+
             <div className="relative group">
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileChange} 
+                accept="image/*" 
+                className="hidden" 
+              />
+              
               <textarea
                 value={question}
                 onChange={e => setQuestion(e.target.value)}
-                placeholder="Message UMKA AI..."
+                placeholder="Ask about your documents or upload an image..."
                 rows={1}
-                className="w-full px-6 py-5 pr-24 rounded-3xl bg-gray-50 dark:bg-[#1E293B] border border-transparent dark:border-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:bg-white dark:focus:bg-[#1E293B] transition-all resize-none shadow-inner min-h-[64px] max-h-48 overflow-y-auto"
+                className="w-full px-6 py-5 pl-14 pr-24 rounded-3xl bg-gray-50 dark:bg-[#1E293B] border border-transparent dark:border-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:bg-white dark:focus:bg-[#1E293B] transition-all resize-none shadow-inner min-h-[64px] max-h-48 overflow-y-auto"
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -439,13 +503,22 @@ export function AskAI() {
                   }
                 }}
               />
+              
+              <button 
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute left-4 bottom-3 p-3 rounded-2xl hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 transition-colors"
+              >
+                <Paperclip className="w-5 h-5" />
+              </button>
+
               <div className="absolute right-3 bottom-3 flex gap-2">
-                <button type="button" onClick={() => setQuestion('')}
+                <button type="button" onClick={() => {setQuestion(''); removeImage();}}
                   className="p-3 rounded-2xl hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 transition-colors">
                   <RotateCcw className="w-5 h-5" />
                 </button>
                 <button type="submit"
-                  disabled={!question.trim() || isThinking || isStreaming}
+                  disabled={!question.trim() || isThinking || isStreaming || isUploadingImage}
                   className="p-3 rounded-2xl bg-[#6366F1] text-white hover:bg-[#4F46E5] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#6366F1]/20">
                   <Send className="w-5 h-5" />
                 </button>
