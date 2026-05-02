@@ -34,6 +34,7 @@ class QueryRequest(BaseModel):
     conversation_id : str | None = None    # Phase 1
     image_id        : str | None = None    # Phase 2 — ID of an uploaded image job
     include_images  : bool = False         # Phase 2 — auto-include recent captions
+    llm_provider    : str | None = "groq"  # Phase 4 — toggle between 'groq' and 'huggingface'
 
 
 def _history_to_dicts(history: list[ChatMessageModel] | None) -> list[dict] | None:
@@ -110,7 +111,7 @@ def query(req: QueryRequest):
         # Actually, let's stick to the user's provided code as it was likely written for a reason.
         # BUT I should make sure generate_multi_answer doesn't break if I DON'T pass image_context.
         # (It had a default None, so it's fine).
-        result = generate_multi_answer(enriched_question, multi_result, history=augmented_history)
+        result = generate_multi_answer(enriched_question, multi_result, history=augmented_history, llm_provider=req.llm_provider)
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
@@ -253,7 +254,7 @@ def query_stream(req: QueryRequest):
         # Events 2-N: token stream
         collected = []
         try:
-            for token in generate_answer_stream(enriched_question, chunks, history=augmented_history):
+            for token in generate_answer_stream(enriched_question, chunks, history=augmented_history, llm_provider=req.llm_provider):
                 collected.append(token)
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
         except Exception as e:
