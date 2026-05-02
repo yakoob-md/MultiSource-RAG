@@ -242,7 +242,7 @@ export async function queryRag(
       source_ids: sourceIds && sourceIds.length > 0 ? sourceIds : null,
       conversation_id: (window as any).currentConversationId || null,
       image_id: imageId || null,
-      include_recent_images: includeRecentImages || false,
+      include_images: includeImages || false,
     }),
   });
 
@@ -288,7 +288,7 @@ export async function streamQueryRag(
   onMeta: (meta: { chatId: string; citations: Citation[]; retrievedChunks: RetrievedChunk[] }) => void,
   onError: (err: Error) => void,
   imageId?: string,
-  includeRecentImages?: boolean
+  includeImages?: boolean
 ): Promise<void> {
   try {
     const res = await fetch(`${API_BASE}/query/stream`, {
@@ -300,7 +300,7 @@ export async function streamQueryRag(
         history,
         conversation_id: (window as any).currentConversationId || null,
         image_id: imageId || null,
-        include_recent_images: includeRecentImages || false,
+        include_images: includeImages || false,
       }),
     });
 

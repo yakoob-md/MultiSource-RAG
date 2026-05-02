@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Send, RotateCcw, Loader2, FileText, Globe, Youtube,
   Plus, MessageSquare, Trash2, Edit2, Check, X,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, ExternalLink
 } from 'lucide-react';
 import { ChatMessage, RetrievedChunk, KnowledgeSource } from '../../types';
 import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, createConversation, deleteConversation, renameConversation, Conversation } from '../../api';
@@ -61,7 +61,9 @@ export function AskAI() {
           role: 'assistant',
           content: m.answer,
           timestamp: new Date(m.createdAt),
-          retrievedChunks: [], // We don't store full chunk data in history currently, or we can load it if needed
+          retrievedChunks: m.sourcesUsed ? m.sourcesUsed.map((s: string) => ({
+            id: s, sourceId: s, sourceName: s, sourceType: 'pdf', text: 'Chunk loaded from history', similarityScore: 1
+          })) : [], // Basic hydration of sources for history
         });
       }
       setMessages(rebuilt);
@@ -361,11 +363,12 @@ export function AskAI() {
                         {[...new Map(msg.retrievedChunks.map(c => [c.sourceId, c])).values()].map(chunk => {
                           const Icon = sourceIcon(chunk.sourceType);
                           return (
-                            <div key={chunk.sourceId}
-                              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[11px] font-semibold text-gray-600 dark:text-gray-300 shadow-sm hover:border-[#6366F1] transition-colors">
-                              <Icon className="w-3.5 h-3.5 text-[#6366F1]" />
-                              {chunk.sourceName}
-                            </div>
+                            <button key={chunk.sourceId}
+                              onClick={() => setSelectedChunks(msg.retrievedChunks || [])}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[11px] font-semibold text-gray-600 dark:text-gray-300 shadow-sm hover:border-[#6366F1] hover:text-[#6366F1] transition-colors">
+                              <Icon className="w-3.5 h-3.5" />
+                              <span className="truncate max-w-[200px]">{chunk.sourceName}</span>
+                            </button>
                           );
                         })}
                       </div>
@@ -455,18 +458,26 @@ export function AskAI() {
                selectedChunks.map((chunk, i) => {
                   const Icon = sourceIcon(chunk.sourceType);
                   return (
-                     <div key={i} className="p-4 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700 shadow-sm hover:border-[#6366F1] transition-all cursor-help group">
-                        <div className="flex items-center gap-2 mb-3">
-                           <Icon className="w-3.5 h-3.5 text-[#6366F1]" />
-                           <span className="text-[10px] font-bold text-gray-900 dark:text-white truncate flex-1">{chunk.sourceName}</span>
-                           <span className="text-[9px] font-black text-[#6366F1]">{(chunk.similarityScore * 100).toFixed(0)}%</span>
+                     <div key={i} className="p-4 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700 shadow-sm hover:border-[#6366F1] transition-all group relative">
+                        <div className="flex items-center gap-2 mb-3 pr-6">
+                           <Icon className="w-3.5 h-3.5 text-[#6366F1] flex-shrink-0" />
+                           <span className="text-[10px] font-bold text-gray-900 dark:text-white truncate flex-1" title={chunk.sourceName}>{chunk.sourceName}</span>
+                           <span className="text-[9px] font-black text-[#6366F1] flex-shrink-0">{(chunk.similarityScore * 100).toFixed(0)}%</span>
                         </div>
-                        <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed italic line-clamp-4">
+                        
+                        {(chunk.sourceType === 'web' || chunk.sourceType === 'youtube') && chunk.metadata?.url && (
+                           <a href={chunk.metadata.url} target="_blank" rel="noopener noreferrer" 
+                              className="absolute top-4 right-4 p-1 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-[#6366F1] transition-colors">
+                              <ExternalLink className="w-3 h-3" />
+                           </a>
+                        )}
+
+                        <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed italic line-clamp-4 group-hover:line-clamp-none transition-all">
                            "{chunk.text}"
                         </p>
                         <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center">
                            <span className="text-[9px] font-bold text-gray-400 uppercase">
-                              {chunk.metadata?.page ? `Page ${chunk.metadata.page}` : chunk.metadata?.timestamp ? `@ ${chunk.metadata.timestamp}` : 'Document'}
+                              {chunk.metadata?.page ? `Page ${chunk.metadata.page}` : chunk.metadata?.timestamp ? `@ ${chunk.metadata.timestamp}` : 'Document Chunk'}
                            </span>
                         </div>
                      </div>

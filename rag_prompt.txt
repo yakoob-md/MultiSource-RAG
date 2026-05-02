@@ -1,163 +1,31 @@
-First — Reality Check
+AUDIT
+✅ What's Already Built (Good Work)
 
-Your current dataset after basic fixes would be:
+Hybrid retrieval (FAISS + BM25 + cross-encoder reranking)
+Multi-source ingestion (PDF, URL, YouTube)
+Legal RAG pipeline with specialized chunking
+Streaming responses via SSE
+Basic chat history (MySQL)
+Image upload + LLaVA captioning queue
+Fine-tuning pipeline (Kaggle + Unsloth)
 
-👉 ~7.5/10
+⚠️ What's Broken or Missing
+CRITICAL GAPS:
 
-But with the upgrades below:
+No persistent multi-chat system — you have one flat chat history, not ChatGPT-style "conversations"
+Chat memory broken — history is sent from frontend but not stored per-conversation
+Image understanding not integrated into RAG — captions exist but never flow into answers
+Citations UI is weak — snippets shown but no clickable source links
+/query/stream and /query-stream are DUPLICATE endpoints — one in stream.py, one in query.py — this will cause confusion
+LLM provider hybrid logic — fine-tuned model integration exists but is never actually called in the main query flow
 
-👉 You can push it to 9–9.5/10 (project-topper level)
 
-🔥 FINAL DATASET UPGRADE BLUEPRINT (DO ALL OF THIS)
-✅ 1. Instruction Diversity (you already plan this)
+STEP 2: GAP ANALYSIS vs Your Requirements
+RequirementStatusMultiple chats (sidebar)❌ MissingChat memory per conversation❌ MissingReopen old chats❌ MissingDynamic source selection✅ DoneImage + text in answer❌ Not integratedCitations in UI⚠️ PartialChatGPT-level UX❌ Needs workGrounded answers✅ Done
 
-But don’t just randomize — structure it
-
-Use 4 categories:
-Type	Example
-Strict grounding	“Answer using only the given context.”
-Simple explanation	“Explain in simple terms.”
-Professional legal	“Provide a structured legal answer.”
-Conversational	“Explain like a lawyer talking to a client.”
-
-👉 Maintain ~25% each
-
-✅ 2. Output Style Diversity (VERY IMPORTANT)
-
-Right now your dataset is too rigid.
-
-You need 4 output styles:
-(A) Structured (40%)
-Answer:
-Legal Basis:
-(B) Natural paragraph (30%)
-The answer is...
-This is based on...
-(C) Simple explanation (20%)
-In simple terms...
-(D) Bullet format (10%)
-• Answer:
-• Reason:
-
-👉 This makes your chatbot feel human, not template-driven
-
-✅ 3. Add “NO ANSWER” cases (MANDATORY)
-
-This is non-negotiable for RAG
-
-👉 Add 10–15% samples
-
-Example:
-
-"The answer is not available in the provided context."
-✅ 4. Add “PARTIAL ANSWER” cases (ADVANCED 🔥)
-
-This is what makes your model stand out
-
-Example:
-
-"The context provides partial information. Based on available details..."
-
-👉 Real-world queries are often incomplete
-
-✅ 5. Add “STRICT GROUNDING BEHAVIOR”
-
-Train the model to:
-
-❌ NOT assume
-❌ NOT hallucinate
-✅ explicitly say when info missing
-
-Example:
-
-"Only the provided context has been used. No external assumptions are made."
-✅ 6. Context Cleaning (CRITICAL — MOST PEOPLE IGNORE)
-
-Fix your inputs:
-
-REMOVE:
-page numbers
-random line breaks
-OCR garbage
-repeated headers
-KEEP:
-clean paragraphs
-clear sections
-
-👉 This alone can improve model quality by 30–40%
-
-✅ 7. Add Difficulty Levels (SMART DATASET DESIGN)
-Split dataset:
-Level	%
-Easy (direct answer)	50%
-Medium (paraphrasing)	30%
-Hard (reasoning)	20%
-Hard Example:
-"Combine multiple parts of the context to answer."
-
-👉 This is where models actually improve
-
-✅ 8. Add Follow-up / Conversational Samples
-
-Even 5–10% is enough
-
-Example:
-
-"QUESTION: ...
-FOLLOW-UP: Explain this in simpler terms"
-✅ 9. Add “FORMAT CONTROL” samples (VERY IMPORTANT)
-
-You want your model to obey instructions like:
-
-"Answer in 3 lines only"
-"Give a concise answer"
-"Explain step-by-step"
-
-👉 This gives control during demo
-
-✅ 10. Add “REAL USER QUERIES” (THIS IS GOLD)
-
-Right now your dataset is too “perfect”
-
-Add messy queries like:
-
-"my friend got caught with drugs what happens now"
-"what punishment for tax fraud india"
-
-👉 This improves:
-
-robustness
-real-world usability
-✅ 11. Balance dataset size (IMPORTANT)
-
-If you have:
-
-< 500 samples → weak
-500–1500 → good
-1500–3000 → strong
-
-👉 Sweet spot: 1000–2000 samples
-
-✅ 12. Add “ANTI-HALLUCINATION TAGGING”
-
-In some outputs include:
-
-"This answer is strictly based on the provided context."
-
-👉 Reinforces grounding behavior
-
-🚫 WHAT NOT TO DO
-
-Avoid these mistakes:
-
-❌ Don’t add too much legal theory
-❌ Don’t make outputs too long
-❌ Don’t mix external knowledge
-❌ Don’t overfit to one format
-
-🧪 FINAL IDEAL SAMPLE (YOUR TARGET)
-{
-  "instruction": "Explain in simple terms using only the given context.",
-  "input": "CONTEXT: ... QUESTION: What is the punishment?",
-  "output": "In simple terms, the punishment is...\n\nThis is based on the provided legal provision...\n\n(Source: case045.pdf)"
-}
+STEP 3: WHAT WE BUILD NOW
+Here's the plan — incremental, one step at a time:
+Phase 1: Multi-Chat System (Database + Backend)
+Phase 2: Connect image captions to RAG
+Phase 3: Fix citations UI
+Phase 4: ChatGPT-like sidebar

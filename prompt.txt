@@ -1,311 +1,250 @@
-You are a senior Python and React engineer implementing a specific,
-scoped upgrade to an existing RAG (Retrieval-Augmented Generation)
-system. Read every word of this prompt before writing any code.
+You are a senior AI architect and full-stack engineer with deep expertise in RAG systems, LLM fine-tuning, multi-modal AI, and scalable chat applications.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SYSTEM CONTEXT (memorise this)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+I will provide you with my GitHub repository and project files.
 
-PROJECT: Rag_System_2/
-OS: Windows 11
-SERVER CMD: uvicorn backend.main:app --reload  (run from repo root)
-LLM PROVIDER: Groq Cloud API — NOT local Ollama for generation
-GROQ MODEL: llama-3.3-70b-versatile
-CONFIG FILE: backend/config.py (all constants live here)
+Your job is to perform a COMPLETE TECHNICAL AUDIT and then GUIDE ME STEP-BY-STEP on what to build next.
 
-EXACT FOLDER STRUCTURE:
-  backend/
-  ├── main.py                  ← registers all routers via app.include_router()
-  ├── config.py                ← GROQ_API_KEY, DB creds, model names hardcoded
-  ├── api/
-  │   ├── history.py           ← GET/DELETE /history endpoints
-  │   ├── query.py             ← POST /query  ← THIS IS THE CURRENT RAG ENDPOINT
-  │   ├── sources.py           ← GET/DELETE /sources
-  │   └── upload.py            ← POST /upload-pdf, /add-url, /add-youtube
-  ├── database/
-  │   ├── connection.py        ← MySQL connection — always import from here
-  │   └── schema.sql
-  ├── ingestion/
-  │   ├── chunker.py           ← LangChain RecursiveTextSplitter 800/100
-  │   ├── embedder.py          ← multilingual-e5-large, @lru_cache
-  │   ├── pdf_loader.py
-  │   ├── url_loader.py
-  │   └── youtube_loader.py
-  ├── rag/
-  │   ├── generator.py         ← _build_prompt(), Groq API call, citations
-  │   └── retriever.py         ← FAISS search + MySQL metadata join
-  └── vectorstore/
-      └── faiss_store.py       ← IndexFlatIP, id_map.json sidecar
+---
 
-  frontend/src/app/
-  ├── api.ts                   ← ALL fetch calls live here (centralised)
-  ├── types.ts                 ← TypeScript interfaces
-  └── components/screens/
-      ├── AskAI.tsx            ← Main chat UI
-      │   Current behaviour:
-      │   - Calls queryRag(question, sourceIds) from api.ts
-      │   - While waiting: disables input + shows <Loader2/> spinner
-      │     with text "Searching sources and generating answer..."
-      │   - On response: displays answer + citations
-      └── [other screens not relevant to this phase]
+## 🚨 CONTEXT (IMPORTANT)
 
-CURRENT queryRag SIGNATURE in api.ts:
-  export async function queryRag(
-    question: string,
-    sourceIds?: string[]
-  ): Promise<QueryResponse>
-  Uses: POST /query with body { question, source_ids }
+This project is a **Multi-Source RAG System** that:
 
-DATABASE SCHEMA (exact):
-  TABLE chunks:
-    id VARCHAR(36) PK, source_id VARCHAR(36), chunk_text LONGTEXT,
-    chunk_index INT, page_number INT, timestamp_s INT,
-    url_ref TEXT, created_at DATETIME
+* Uses PDFs, websites, and YouTube transcripts as knowledge sources
+* Uses embeddings + vector DB for retrieval
+* Uses a fine-tuned LLM for answering
+* Will also include image understanding
 
-  TABLE sources:
-    id VARCHAR(36) PK, type ENUM('pdf','url','youtube'),
-    title VARCHAR(500), origin TEXT, language VARCHAR(10),
-    chunk_count INT, status ENUM('processing','completed','failed'),
-    created_at DATETIME
+The goal is to build a system similar to ChatGPT.
 
-IRON RULES — never violate:
-  1. Do NOT modify or delete the existing POST /query endpoint in query.py
-  2. Do NOT rename or change queryRag() in api.ts — keep it working
-  3. New streaming endpoint = POST /query/stream (new file, new route)
-  4. All SQL uses raw queries with %s parameterisation
-  5. All new config constants go in config.py only
-  6. Use pathlib.Path for all file paths (Windows compatible)
-  7. Every new backend file uses: import logging; logger = logging.getLogger(__name__)
-  8. Never use print() in backend — use logger.info/warning/error
+---
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-YOUR TASK: IMPLEMENT STREAMING RESPONSES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🎯 FINAL SYSTEM REQUIREMENTS
 
-OBJECTIVE:
-Replace the blocking 10-30 second wait with token-by-token streaming.
-User sees the answer being written word by word in real time.
-The existing /query endpoint continues working untouched.
+The final system MUST:
 
-━━ STEP 1: backend/api/stream.py (CREATE THIS FILE) ━━━━━━━━━
+### 1. Chat System (ChatGPT-like)
 
-Create backend/api/stream.py with:
+* Multiple chats (like ChatGPT sidebar)
+* Each chat has memory and context
+* Ability to reopen old chats and continue conversation
+* Context must persist correctly
 
-  - FastAPI APIRouter
-  - POST /query/stream endpoint
-  - Request body (Pydantic model):
-      class StreamRequest(BaseModel):
-          question: str
-          source_ids: list[str] | None = None
-          history: list[dict] = []   # included now for Phase 2 prep
-                                     # ignored in this phase but accepted
+---
 
-  - Implementation logic:
-      1. Import and call retriever.py exactly as query.py does
-         (do not copy retrieval logic — import and call the same function)
-      2. Import _build_prompt() from generator.py
-         (do not copy prompt logic — import the same function)
-      3. Build the prompt using _build_prompt() with retrieved chunks
-      4. Create Groq client using GROQ_API_KEY from config.py
-      5. Call Groq with stream=True:
-           client.chat.completions.create(
-             model=config.GROQ_MODEL,
-             messages=[{"role": "user", "content": prompt}],
-             stream=True,
-             max_tokens=1024
-           )
-      6. Return StreamingResponse with media_type="text/event-stream"
+### 2. Multi-Source RAG
 
-  - SSE event format — each token:
-      f"data: {json.dumps({'token': chunk_text})}\n\n"
+* User can select sources dynamically:
 
-  - SSE final event (after stream ends):
-      f"data: {json.dumps({'done': True, 'citations': citations_list})}\n\n"
-      where citations_list is built using the same citation logic as generator.py
-      (import the citation builder function from generator.py — do not duplicate)
+  * PDFs
+  * URLs
+  * YouTube videos
+* System retrieves only relevant chunks
+* Context should remain clean and not overloaded
 
-  - SSE error event:
-      f"data: {json.dumps({'error': str(e)})}\n\n"
+---
 
-  - Add response headers:
-      headers = {
-          "Cache-Control": "no-cache",
-          "X-Accel-Buffering": "no",
-          "Connection": "keep-alive",
-      }
+### 3. Multi-Modal Support
 
-  - Full try/except around Groq call:
-      on exception: yield error SSE event, log with logger.error
+* User can upload images
+* Image + text + documents should work together
+* Image understanding should integrate into final answer
 
-━━ STEP 2: backend/main.py (MODIFY — ADD ONE ROUTER) ━━━━━━━
+---
 
-Add these two lines in the correct position (after existing imports,
-before or after other router registrations — match existing pattern):
+### 4. Model Integration
 
-  from backend.api.stream import router as stream_router
-  app.include_router(stream_router)
+* Fine-tuned model (already trained) should be used
+* Embedding model should be efficient and accurate
+* Image model should integrate smoothly
+* All models must work together with minimal latency
 
-Do NOT touch any other line in main.py.
+---
 
-━━ STEP 3: frontend/src/app/api.ts (ADD NEW FUNCTION ONLY) ━━
+### 5. Accuracy & Safety
 
-Add a NEW function streamQueryRag() at the bottom of api.ts.
-Do NOT modify queryRag() or any existing function.
+* Answers MUST be grounded in retrieved data
+* If answer is not found → explicitly say:
+  “I don’t have enough information to answer that”
+* NO hallucinations
 
-  export async function streamQueryRag(
-    question: string,
-    sourceIds: string[] | undefined,
-    history: Array<{role: string; content: string}>,
-    onToken: (token: string) => void,
-    onDone: (citations: Citation[]) => void,
-    onError: (err: Error) => void
-  ): Promise<void> {
-    try {
-      const res = await fetch(`${API_BASE}/query/stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question,
-          source_ids: sourceIds && sourceIds.length > 0 ? sourceIds : null,
-          history,
-        }),
-      })
+---
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      if (!res.body) throw new Error('No response body')
+### 6. Citations (CRITICAL)
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
+* Every answer must include:
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+  * Source name (PDF / URL / video)
+  * Chunk reference or section
+* Citations must be clearly visible in UI
 
-        const text = decoder.decode(value, { stream: true })
-        const lines = text.split('\n')
+---
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const jsonStr = line.slice(6).trim()
-          if (!jsonStr) continue
+### 7. UI/UX (ChatGPT-level)
 
-          try {
-            const parsed = JSON.parse(jsonStr)
-            if (parsed.error) {
-              onError(new Error(parsed.error))
-              return
-            }
-            if (parsed.done) {
-              onDone(parsed.citations ?? [])
-              return
-            }
-            if (parsed.token) {
-              onToken(parsed.token)
-            }
-          } catch {
-            // partial chunk — skip silently
-          }
-        }
-      }
-    } catch (err) {
-      onError(err instanceof Error ? err : new Error(String(err)))
-    }
-  }
+* Clean, modern interface
+* Sidebar with chat history
+* Resource selection panel
+* Smooth chat experience
+* Professional design (not basic Streamlit feel)
 
-  IMPORTANT: Citation type must match existing Citation interface in types.ts.
-  If Citation is not yet imported in api.ts, add the import from types.ts.
+---
 
-━━ STEP 4: AskAI.tsx (MODIFY CAREFULLY) ━━━━━━━━━━━━━━━━━━━━
+### 8. Performance
 
-Read the current AskAI.tsx carefully before modifying.
-Make ONLY these targeted changes:
+* System should respond within 3–10 seconds ideally
+* Avoid unnecessary API calls
+* Efficient retrieval and prompt construction
 
-  CHANGE 1 — Add import:
-    import { streamQueryRag } from '../api'
-    (keep existing queryRag import — do not remove it)
+---
 
-  CHANGE 2 — Add state variable for streaming:
-    const [streamingAnswer, setStreamingAnswer] = useState<string>('')
-    const [isStreaming, setIsStreaming] = useState<boolean>(false)
+## 🔍 YOUR TASK
 
-  CHANGE 3 — Replace the queryRag() call in the submit handler with
-  streamQueryRag(). The new flow:
+### STEP 1: REPO AUDIT
 
-    a. Set isStreaming = true, clear streamingAnswer = ''
-    b. Show "Searching sources..." state (same Loader2 spinner as before)
-       while retrieval happens (before first token — ~1-2 seconds)
-    c. On first token received: hide spinner, start showing streamingAnswer
-       in the assistant message bubble
-    d. Each subsequent token: setStreamingAnswer(prev => prev + token)
-    e. On onDone: finalise message with full text + citations,
-       set isStreaming = false
-    f. On onError: show error state, set isStreaming = false
+Analyze the entire repository and explain:
 
-  CHANGE 4 — Render streamingAnswer:
-    While isStreaming === true and streamingAnswer !== '':
-      Show the assistant message bubble with streamingAnswer content
-      Add a blinking cursor at the end:
-        <span className="animate-pulse">▋</span>
-    When isStreaming === false: render normally from messages state
+* What is already implemented
+* What is partially implemented
+* What is missing
+* Architecture issues
+* Code quality issues
+* Performance bottlenecks
+* Any incorrect design decisions
 
-  CHANGE 5 — Pass empty history for now (Phase 2 will fill this):
-    Pass history={[]} to streamQueryRag for this phase
+Be brutally honest and specific.
 
-  DO NOT change: component props, sidebar logic, source filter UI,
-  message list rendering for completed messages, or any other UI element.
+---
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WHAT CAN GO WRONG + HOW TO PREVENT IT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### STEP 2: GAP ANALYSIS
 
-1. Groq SDK version:
-   Check groq package version in requirements.txt.
-   stream=True requires groq >= 0.4.0
-   If version is lower: pip install --upgrade groq
+Compare current implementation vs FINAL REQUIREMENTS.
 
-2. CORS with SSE:
-   In main.py, ensure CORSMiddleware allows_origins includes
-   the frontend dev URL (typically http://localhost:5173).
-   If CORS is blocking SSE, add these allowed headers:
-   ["Content-Type", "Cache-Control", "X-Accel-Buffering"]
+Clearly list:
 
-3. Generator.py import:
-   If _build_prompt() or the citation builder are not standalone
-   importable functions (e.g., buried inside a class), refactor
-   only that function to be importable — do not touch any other
-   logic in generator.py.
+* Missing features
+* Weak components
+* Risks
 
-4. Empty stream from Groq:
-   If Groq returns 0 tokens (content filter triggered), the stream
-   ends without a done event. Add a post-loop check:
-   if not sent_done_event: yield done event with empty citations
+---
 
-5. Windows line endings:
-   SSE requires \n\n line endings. On Windows, ensure you're not
-   accidentally producing \r\n. Use explicit "\n\n" strings.
+### STEP 3: SYSTEM DESIGN FIX
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TEST CHECKPOINT — do this before Phase 2
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Redesign the system architecture if needed.
 
-1. Start backend: uvicorn backend.main:app --reload (from repo root)
-2. Open AskAI in browser
-3. Upload any PDF if knowledge base is empty
-4. Ask any question
+Include:
 
-EXPECTED BEHAVIOUR:
-  ✓ "Searching sources..." spinner appears immediately on submit
-  ✓ Spinner disappears after ~1-2 seconds (when first token arrives)
-  ✓ Answer text appears word-by-word with blinking cursor
-  ✓ Citations appear at the bottom after streaming ends
-  ✓ Input field re-enables after streaming completes
-  ✓ Old POST /query endpoint still works (test with curl or Postman)
+* Backend architecture
+* Model flow (RAG + image + LLM)
+* Chat memory system
+* API design
+* Data flow
 
-MUST NOT HAPPEN:
-  ✗ Any 30-second blank wait
-  ✗ queryRag() broken or removed
-  ✗ Console errors about CORS or SSE parsing
-  ✗ Streaming stops mid-answer
+---
 
-When all checkboxes pass: git commit -m "feat: Phase 1 — streaming responses"
-Then proceed to Phase 2.
+### STEP 4: IMPLEMENTATION ROADMAP
+
+Give a **step-by-step execution plan**:
+
+For each step:
+
+* What to build
+* Where to build (file/module)
+* Tools/libraries to use
+* Expected output
+
+---
+
+### STEP 5: CRITICAL IMPROVEMENTS
+
+Suggest:
+
+* Better embedding models
+* Better retrieval techniques (reranking, hybrid search)
+* Latency optimizations
+* Prompt engineering improvements
+
+---
+
+### STEP 6: UI IMPROVEMENTS
+
+Suggest:
+
+* Layout structure
+* Components needed
+* UX improvements
+* How to make it ChatGPT-like
+
+---
+
+### STEP 7: FINAL VERDICT
+
+Rate the project on:
+
+* Practicality
+* Industry relevance
+* Resume impact
+* Scalability
+
+---
+
+## ⚠️ IMPORTANT RULES
+
+* Do NOT give generic advice
+* Do NOT skip steps
+* Be highly technical but clear
+* Assume I will implement everything you say
+* Focus on real-world deployment readiness
+
+---
+
+Now analyze my repository and guide me.
+
+
+I am thinking to do this : 
+do u think it is feasible and the right thing to do 
+u need to be extremely creative and practical when thinking about strategy:
+
+Recommended FINAL STACK (Best for YOU)
+🔥 Option 1 (Easiest + Stable)
+Image → BLIP (HF API)
+Embeddings → CPU (sentence-transformers)
+LLM → HF API (your fine-tuned model)
+
+✔ Works
+✔ Simple
+❌ Slow (~20–40 sec)
+
+🔥 Option 2 (BEST balance)
+Image → BLIP (HF API)
+Embeddings → CPU
+LLM → LOCAL (RTX 2050, quantized)
+
+✔ Faster (~5–15 sec)
+✔ More control
+✔ No API limits on LLM
+
+⚠️ Important Rules (Don’t ignore)
+1️⃣ Never send full PDF
+Only send top 2–3 chunks
+2️⃣ Keep image output short
+1–2 line description only
+3️⃣ Don’t overload GPU
+Only ONE model on GPU
+🧠 What will your response quality be?
+
+👉 If you follow above setup:
+
+✔ Image understanding → good
+✔ Text reasoning → strong
+✔ Combined answer → solid
+
+👉 You will NOT lose quality
+
+🔥 Final Verdict
+
+👉 Yes, your system will work
+👉 BUT:
+
+❌ Not if you run everything on GPU
+✔ Works perfectly with hybrid setup
