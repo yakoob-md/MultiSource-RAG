@@ -54,7 +54,7 @@ def _format_chunk_for_prompt(rank: int, chunk: RetrievedChunk) -> str:
         
     return f"{header}\n{chunk.chunk_text}"
 
-def build_single_source_prompt(question: str, result: MultiSourceResult, history: list[dict] | None) -> list[dict]:
+def build_single_source_prompt(question: str, result: MultiSourceResult, history: list[dict] | None, image_context: str | None = None) -> list[dict]:
     system_prompt = """You are a legal information assistant for Indian law. Answer using ONLY the provided context.
     Structure your answer as:
     ANSWER: [clear explanation]
@@ -69,6 +69,9 @@ def build_single_source_prompt(question: str, result: MultiSourceResult, history
     
     context_block = "\n\n".join(context_parts)
     
+    if image_context:
+        system_prompt = f"{system_prompt}\n\n{image_context}"
+
     messages = [
         {"role": "system", "content": f"{system_prompt}\n\nRETRIEVED CONTEXT:\n{context_block}"}
     ]
@@ -79,7 +82,7 @@ def build_single_source_prompt(question: str, result: MultiSourceResult, history
     messages.append({"role": "user", "content": question})
     return messages
 
-def build_comparison_prompt(question: str, result: MultiSourceResult, history: list[dict] | None) -> list[dict]:
+def build_comparison_prompt(question: str, result: MultiSourceResult, history: list[dict] | None, image_context: str | None = None) -> list[dict]:
     system_prompt = """You are a legal analyst. Compare the provided sources objectively.
     Structure your answer as:
     QUERY: [restate what is being compared]
@@ -108,6 +111,9 @@ def build_comparison_prompt(question: str, result: MultiSourceResult, history: l
         s_prompt = s_prompt.replace("{first source title}", titles[0])
         s_prompt = s_prompt.replace("{second source title}", titles[1])
     
+    if image_context:
+        s_prompt = f"{s_prompt}\n\n{image_context}"
+
     messages = [
         {"role": "system", "content": f"{s_prompt}\n\nRETRIEVED CONTEXT:\n{context_block}"}
     ]
@@ -118,7 +124,7 @@ def build_comparison_prompt(question: str, result: MultiSourceResult, history: l
     messages.append({"role": "user", "content": question})
     return messages
 
-def build_synthesis_prompt(question: str, result: MultiSourceResult, history: list[dict] | None) -> list[dict]:
+def build_synthesis_prompt(question: str, result: MultiSourceResult, history: list[dict] | None, image_context: str | None = None) -> list[dict]:
     system_prompt = """You are synthesizing information across multiple legal sources.
     Structure your answer as:
     SYNTHESIS:
@@ -137,6 +143,9 @@ def build_synthesis_prompt(question: str, result: MultiSourceResult, history: li
         
     context_block = "\n\n".join(context_parts)
     
+    if image_context:
+        system_prompt = f"{system_prompt}\n\n{image_context}"
+
     messages = [
         {"role": "system", "content": f"{system_prompt}\n\nRETRIEVED CONTEXT:\n{context_block}"}
     ]
@@ -147,7 +156,7 @@ def build_synthesis_prompt(question: str, result: MultiSourceResult, history: li
     messages.append({"role": "user", "content": question})
     return messages
 
-def generate_multi_answer(question: str, result: MultiSourceResult, history: list[dict] | None = None) -> GeneratedAnswer:
+def generate_multi_answer(question: str, result: MultiSourceResult, history: list[dict] | None = None, image_context: str | None = None) -> GeneratedAnswer:
     if not result.all_chunks:
         return GeneratedAnswer(
             answer="I don't have enough information to answer this question from the current sources.",
@@ -157,11 +166,11 @@ def generate_multi_answer(question: str, result: MultiSourceResult, history: lis
 
     # 1. Select builder
     if result.query_intent == "comparison":
-        messages = build_comparison_prompt(question, result, history)
+        messages = build_comparison_prompt(question, result, history, image_context)
     elif result.query_intent == "synthesis":
-        messages = build_synthesis_prompt(question, result, history)
+        messages = build_synthesis_prompt(question, result, history, image_context)
     else:
-        messages = build_single_source_prompt(question, result, history)
+        messages = build_single_source_prompt(question, result, history, image_context)
         
     # 2. Call Groq
     try:

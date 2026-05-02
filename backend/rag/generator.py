@@ -71,9 +71,10 @@ def _build_reference(chunk: RetrievedChunk) -> str:
 
 
 def _build_messages(
-    question : str,
-    chunks   : list[RetrievedChunk],
-    history  : list[ChatMessage] | None = None,
+    question     : str,
+    chunks       : list[RetrievedChunk],
+    history      : list[ChatMessage] | None = None,
+    image_context: str | None = None,
 ) -> list[dict]:
     """
     Build the full messages array sent to Groq's chat completions API.
@@ -131,6 +132,9 @@ When answering follow-up questions, use the conversation history to understand w
 
 RETRIEVED CONTEXT:
 {context}"""
+
+    if image_context:
+        system_content = f"{system_content}\n\n{image_context}"
 
     messages: list[dict] = [
         {"role": "system", "content": system_content}
@@ -195,9 +199,10 @@ def _build_citations(chunks: list[RetrievedChunk]) -> list[Citation]:
 # ── Streaming path ────────────────────────────────────────────────────────────
 
 def generate_answer_stream(
-    question : str,
-    chunks   : list[RetrievedChunk],
-    history  : list[ChatMessage] | None = None,
+    question     : str,
+    chunks       : list[RetrievedChunk],
+    history      : list[ChatMessage] | None = None,
+    image_context: str | None = None,
 ) -> Generator[str, None, None]:
     """
     Streaming answer generation with chat history support.
@@ -217,7 +222,7 @@ def generate_answer_stream(
         yield "I don't have any relevant information to answer this question. Please upload some documents first."
         return
 
-    messages = _build_messages(question, chunks, history)
+    messages = _build_messages(question, chunks, history, image_context=image_context)
     print(f"[Generator] Streaming | model={GROQ_MODEL} | "
           f"history_turns={len(history) if history else 0} | "
           f"total_messages={len(messages)}")
@@ -240,9 +245,10 @@ def generate_answer_stream(
 # ── Non-streaming path ────────────────────────────────────────────────────────
 
 def generate_answer(
-    question : str,
-    chunks   : list[RetrievedChunk],
-    history  : list[ChatMessage] | None = None,
+    question     : str,
+    chunks       : list[RetrievedChunk],
+    history      : list[ChatMessage] | None = None,
+    image_context: str | None = None,
 ) -> GeneratedAnswer:
     """
     Non-streaming answer generation with chat history support.
@@ -266,7 +272,7 @@ def generate_answer(
         )
 
     # ── Step 1: Build messages with history ───────────────────────────────────
-    messages = _build_messages(question, chunks, history)
+    messages = _build_messages(question, chunks, history, image_context=image_context)
     print(f"[Generator] Sending | model={GROQ_MODEL} | "
           f"history_turns={len(history) if history else 0} | "
           f"total_messages={len(messages)}")

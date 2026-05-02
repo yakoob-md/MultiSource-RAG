@@ -228,14 +228,21 @@ export async function fetchPendingImageCount(): Promise<number> {
 
 // ── Query API ───────────────────────────────────────────────────────────────
 
-export async function queryRag(question: string, sourceIds?: string[]): Promise<QueryResponse> {
+export async function queryRag(
+  question: string, 
+  sourceIds?: string[], 
+  imageId?: string, 
+  includeRecentImages?: boolean
+): Promise<QueryResponse> {
   const res = await fetch(`${API_BASE}/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       question,
       source_ids: sourceIds && sourceIds.length > 0 ? sourceIds : null,
-      conversation_id: (window as any).currentConversationId || null, // Pass if available
+      conversation_id: (window as any).currentConversationId || null,
+      image_id: imageId || null,
+      include_recent_images: includeRecentImages || false,
     }),
   });
 
@@ -279,7 +286,9 @@ export async function streamQueryRag(
   history: Array<{ role: string; content: string }>,
   onToken: (token: string) => void,
   onMeta: (meta: { chatId: string; citations: Citation[]; retrievedChunks: RetrievedChunk[] }) => void,
-  onError: (err: Error) => void
+  onError: (err: Error) => void,
+  imageId?: string,
+  includeRecentImages?: boolean
 ): Promise<void> {
   try {
     const res = await fetch(`${API_BASE}/query/stream`, {
@@ -290,6 +299,8 @@ export async function streamQueryRag(
         source_ids: sourceIds && sourceIds.length > 0 ? sourceIds : null,
         history,
         conversation_id: (window as any).currentConversationId || null,
+        image_id: imageId || null,
+        include_recent_images: includeRecentImages || false,
       }),
     });
 
