@@ -17,11 +17,6 @@ export function Landing() {
 
       {/* Main Content */}
       <div className="relative z-10 flex flex-col items-center text-center px-4 max-w-4xl w-full">
-        {/* Logo Icon */}
-        <div className="mb-8 p-4 rounded-2xl bg-white/5 border border-white/10 shadow-[0_0_40px_rgba(99,102,241,0.2)] backdrop-blur-xl animate-in zoom-in duration-700">
-          <Hexagon className="w-16 h-16 text-[#6366F1]" strokeWidth={1.5} />
-        </div>
-
         {/* Title */}
         <h1 className="text-7xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-gray-200 to-gray-500 tracking-tight mb-6 animate-in slide-in-from-bottom-8 fade-in duration-700 delay-100">
           InteleX
@@ -46,24 +41,6 @@ export function Landing() {
           </Link>
         </div>
 
-        {/* Features Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full mt-24 animate-in slide-in-from-bottom-8 fade-in duration-700 delay-500">
-          <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 backdrop-blur-sm">
-            <Shield className="w-6 h-6 text-[#6366F1] mb-4 mx-auto" />
-            <h3 className="text-white font-medium mb-2">Strict Grounding</h3>
-            <p className="text-sm text-gray-500">Zero-hallucination retrieval with exact chunk citation and cross-encoding.</p>
-          </div>
-          <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 backdrop-blur-sm">
-            <Zap className="w-6 h-6 text-[#8B5CF6] mb-4 mx-auto" />
-            <h3 className="text-white font-medium mb-2">Hybrid Inference</h3>
-            <p className="text-sm text-gray-500">Seamless switching between blazing fast API logic and secure local fine-tunes.</p>
-          </div>
-          <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 backdrop-blur-sm">
-            <Hexagon className="w-6 h-6 text-[#D946EF] mb-4 mx-auto" />
-            <h3 className="text-white font-medium mb-2">Visual Processing</h3>
-            <p className="text-sm text-gray-500">Direct integration of photographic evidence and document scans via BLIP APIs.</p>
-          </div>
-        </div>
       </div>
     </div>
   );
