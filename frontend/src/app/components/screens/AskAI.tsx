@@ -6,9 +6,10 @@ import {
   Database, Upload, Link as LinkIcon, Video, Command, Send as SendIcon, X as XIcon, Loader as LoaderIcon, Sparkles, Figma, Monitor as MonitorIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router';
 import { ChatMessage, RetrievedChunk, KnowledgeSource } from '../../types';
 import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, createConversation, deleteConversation, renameConversation, Conversation, uploadImage, uploadPdf, addWebsite, addYouTube } from '../../api';
-import { cn } from '../../../lib/utils';
+import { cn } from '../ui/utils';
 // import { CommandPalette } from '../CommandPalette';
 
 // ── UI Components from rough.py ──────────────────────────────────────────────
@@ -137,6 +138,9 @@ export function AskAI() {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Default closed in unified UI
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const navigate = useNavigate();
+
+  const navigateTo = (path: string) => navigate(path);
 
   // ── Chat state ────────────────────────────────────────────────────────────
   const [messages, setMessages] = useState<ChatMessage[]>([]);
