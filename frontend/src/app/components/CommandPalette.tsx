@@ -199,9 +199,9 @@ export function CommandPalette({ onSelectHistory }: { onSelectHistory?: (id: str
         section: "all" as CommandSection,
         icon: <Clock className="h-3 w-3" />,
         action: () => {
-            if (onSelectHistory) onSelectHistory(conv.id);
+            window.dispatchEvent(new CustomEvent('load-conversation', { detail: { id: conv.id } }));
             setOpen(false);
-            navigateTo("/app/ask");
+            navigateTo("/app");
         }
     }))
   ];
@@ -323,7 +323,11 @@ export function CommandPalette({ onSelectHistory }: { onSelectHistory?: (id: str
                   commandItemsList.map((item, idx) => (
                     <div
                       key={item.id}
-                      ref={(el) => (itemsRef.current[idx] = el)}
+                      ref={(el) => {
+                        if (itemsRef.current) {
+                          itemsRef.current[idx] = el;
+                        }
+                      }}
                       className={`mx-2 flex cursor-pointer items-center justify-between rounded-xl px-3 py-3 transition-all ${
                         selectedIndex === idx ? "bg-white/10 text-white scale-[1.01]" : "text-white/60 hover:bg-white/5"
                       }`}

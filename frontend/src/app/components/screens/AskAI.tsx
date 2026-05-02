@@ -1,14 +1,14 @@
-import React, { useEffect, useRef, useState, useCallback, useTransition } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  Send, RotateCcw, Loader2, FileText, Globe, Youtube,
-  Plus, MessageSquare, Trash2, Edit2, Check, X,
-  ChevronLeft, ChevronRight, ExternalLink, Paperclip, Image as ImageIcon,
-  Database, Upload, Link as LinkIcon, Video, Command, Send as SendIcon, X as XIcon, Loader as LoaderIcon, Sparkles, Figma, Monitor as MonitorIcon, Clock, Lock
+  Send, Loader2, FileText, Globe, Youtube,
+  Plus, MessageSquare, Trash2, X,
+  ChevronLeft, Paperclip, Image as ImageIcon,
+  Database, Upload, Link as LinkIcon, Send as SendIcon, X as XIcon, Sparkles, Clock, Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router';
 import { ChatMessage, RetrievedChunk, KnowledgeSource } from '../../types';
-import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, createConversation, deleteConversation, renameConversation, Conversation, uploadImage, uploadPdf, addWebsite, addYouTube } from '../../api';
+import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, Conversation, uploadImage } from '../../api';
 import { cn } from '../ui/utils';
 // import { CommandPalette } from '../CommandPalette';
 
@@ -174,16 +174,6 @@ export function AskAI() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({ minHeight: 56, maxHeight: 200 });
 
-  // ── Load conversations on mount ───────────────────────────────────────────
-  useEffect(() => {
-    fetchConversations().then(setConversations).catch(() => {});
-    fetchSources().then(setSources).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingAnswer]);
-
   const loadConversation = useCallback(async (convId: string) => {
     setActiveConvId(convId);
     setMessages([]);
@@ -204,19 +194,41 @@ export function AskAI() {
           content: m.answer,
           timestamp: new Date(m.createdAt),
           retrievedChunks: m.sourcesUsed ? m.sourcesUsed.map((s: string) => ({
-            id: s, sourceId: s, sourceName: s, sourceType: 'pdf', text: 'Chunk loaded from history', similarityScore: 1
+            id: s, 
+            sourceId: s, 
+            sourceName: s, 
+            sourceType: 'pdf' as const, 
+            text: 'Chunk loaded from history', 
+            similarityScore: 1,
+            language: 'EN' as const
           })) : [],
         });
       }
       setMessages(rebuilt);
-      const lastMsg = data.messages[data.messages.length - 1];
-      if (lastMsg?.sourcesUsed) {
-          // Hydrate chunks if we wanted to
-      }
     } catch {
       setError('Failed to load conversation');
     }
   }, []);
+
+  // ── Effects ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    fetchConversations().then(setConversations).catch(() => {});
+    fetchSources().then(setSources).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, streamingAnswer]);
+
+  useEffect(() => {
+    const handleLoadConv = (e: any) => {
+        if (e.detail?.id) {
+            loadConversation(e.detail.id);
+        }
+    };
+    window.addEventListener('load-conversation', handleLoadConv);
+    return () => window.removeEventListener('load-conversation', handleLoadConv);
+  }, [loadConversation]);
 
   const handleNewChat = () => {
     setActiveConvId(null);
