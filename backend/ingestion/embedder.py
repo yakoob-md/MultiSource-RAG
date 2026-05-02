@@ -4,9 +4,9 @@ from backend.config import EMBEDDING_MODEL, EMBEDDING_DIM
 import torch
 
 # ── Device detection ──────────────────────────────────────────────────────────
-# Uses your RTX 2050 GPU for embedding — much faster during ingestion
-# of large documents. Falls back to CPU silently if CUDA is unavailable.
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+# We force CPU for embeddings to save VRAM for the fine-tuned LLM on your 
+# RTX 2050 (4GB). E5-large on CPU is still very fast for single queries.
+DEVICE = "cpu" 
 
 
 # ── Load model once and cache it ─────────────────────────────────────────────

@@ -15,12 +15,23 @@ from backend.api.legal_query_routes import router as legal_query_router
 
 from backend.ingestion.embedder import get_model as preload_embedder
 from backend.rag.retriever import _get_reranker as preload_reranker
+from backend.core.llm_provider import llm_provider
+from backend.config import LEGAL_MODEL_MODE
 
 def _load_models(app: FastAPI):
     print("[Startup] Loading ML models...")
     try:
         preload_embedder()
         preload_reranker()
+        
+        # Only preload local LLM if explicitly requested, to avoid OOM on startup
+        if LEGAL_MODEL_MODE == "local":
+             print("[Startup] Preloading Local LLM (this may take a minute)...")
+             # We use lazy loading inside llm_provider, 
+             # but we can trigger it here if we want immediate readiness.
+             # However, for RTX 2050 (4GB), it's safer to load on first use.
+             pass 
+             
         print("[Startup] Models ready.")
     except Exception as e:
         print(f"[Startup] Model load failed: {e}")

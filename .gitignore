@@ -106,6 +106,7 @@ frontend/build/
 # Project Data & Indexes
 data/
 backend/temp/
+models/
 
 # OS Specific
 .DS_Store

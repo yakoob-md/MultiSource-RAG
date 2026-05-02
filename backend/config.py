@@ -13,9 +13,11 @@ BASE_DIR        = Path(__file__).resolve().parent.parent
 DATA_DIR        = BASE_DIR / "data"
 UPLOAD_DIR      = DATA_DIR / "uploaded_files"
 FAISS_DIR       = DATA_DIR / "faiss_index"
+MODELS_DIR      = BASE_DIR / "models"
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 FAISS_DIR.mkdir(parents=True, exist_ok=True)
+MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── MySQL ─────────────────────────────────────────────────────────────────────
 # Replace hardcoded strings with os.getenv. Provide fallbacks if desired.
@@ -42,3 +44,14 @@ TOP_K = 8
 GROQ_API_KEY    = os.getenv("GROQ_API_KEY") 
 GROQ_MODEL      = "llama-3.3-70b-versatile"
 GROQ_TIMEOUT    = 30
+
+# ── Fine-Tuned Model (Hybrid: Local/HF) ──────────────────────────────────────
+# Set to "local" to run on your PC, or "huggingface" to use cloud inference
+LEGAL_MODEL_MODE    = os.getenv("LEGAL_MODEL_MODE", "local") 
+LEGAL_MODEL_PATH    = MODELS_DIR / "legal_model_lora"
+BASE_MODEL_NAME     = "unsloth/Meta-Llama-3.1-8B-bnb-4bit"
+
+# Hugging Face Inference API (for legal or image models)
+HF_API_KEY          = os.getenv("HF_API_KEY")
+HF_LEGAL_MODEL_ID   = os.getenv("HF_LEGAL_MODEL_ID") # e.g., "username/legal_model"
+HF_IMAGE_MODEL_ID   = "Salesforce/blip-image-captioning-large"

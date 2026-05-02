@@ -2,11 +2,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 import json
-from groq import Groq
-
 from backend.rag.retriever import retrieve
 from backend.database.connection import get_connection
 from backend.config import GROQ_API_KEY, GROQ_MODEL
+from backend.core.llm_provider import llm_provider
 
 router = APIRouter()
 
@@ -14,6 +13,7 @@ class LegalQueryRequest(BaseModel):
     question: str
     source_filter: Optional[str] = None
     language: str = "en"
+    model_type: str = "finetuned"  # "finetuned" or "base"
 
 @router.post("/legal-query")
 async def legal_query(req: LegalQueryRequest):
@@ -153,18 +153,16 @@ If information is not in the context, say "Not found in loaded documents."
     
     user_prompt = "CONTEXT:\n" + "\n".join(context_blocks) + f"\n\nUSER: {req.question}"
 
-    # 5. Call Groq
+    # 5. Call LLM via Provider
     try:
-        client = Groq(api_key=GROQ_API_KEY)
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.0
-        )
-        llm_output = response.choices[0].message.content
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        
+        # Use the requested model type (finetuned or base)
+        llm_output = llm_provider.generate(messages, mode=req.model_type)
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM Generation failed: {str(e)}")
 

@@ -376,11 +376,16 @@ export function notifySidebarRefresh() {
   window.dispatchEvent(new CustomEvent('sources-updated'));
 }
 
-export async function queryLegal(question: string, sourceFilter?: string): Promise<LegalQueryResponse> {
+export async function queryLegal(question: string, sourceFilter?: string, modelType: "finetuned" | "base" = "finetuned"): Promise<LegalQueryResponse> {
   const res = await fetch(`${API_BASE}/legal-query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, source_filter: sourceFilter || null, language: "en" })
+    body: JSON.stringify({ 
+      question, 
+      source_filter: sourceFilter || null, 
+      language: "en",
+      model_type: modelType 
+    })
   });
   if (!res.ok) {
     const text = await res.text();

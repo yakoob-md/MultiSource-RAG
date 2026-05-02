@@ -9,7 +9,7 @@ from datasets import load_dataset
 model_name = "unsloth/Meta-Llama-3.1-8B-bnb-4bit" # 4-bit quantization for T4 GPU
 max_seq_length = 2048 # Supports RoPE Scaling internally
 load_in_4bit = True
-dataset_file = "/kaggle/input/your-dataset-name/legal_rag_dataset_filtered.jsonl" # Path in Kaggle
+dataset_file = "/kaggle/input/datasets/yakoob2345/legal-final/legal_rag_dataset_final.jsonl" # Path in Kaggle
 
 # 2. Load Model & Tokenizer
 model, tokenizer = FastLanguageModel.from_pretrained(
@@ -57,44 +57,52 @@ def formatting_prompts_func(examples):
         texts.append(text)
     return { "text" : texts, }
 
-# Load your local file
-# Note: In Kaggle, you will upload the file as a dataset
-dataset = load_dataset("json", data_files=dataset_file, split="train")
-dataset = dataset.map(formatting_prompts_func, batched = True,)
-
 from trl import SFTTrainer, SFTConfig
 
-# 5. Training Arguments
+# Train/Validation Split
+dataset = load_dataset("json", data_files=dataset_file)["train"]
+dataset = dataset.train_test_split(test_size=0.1)
+
+train_dataset = dataset["train"].map(formatting_prompts_func, batched=True)
+eval_dataset  = dataset["test"].map(formatting_prompts_func, batched=True)
+
 trainer = SFTTrainer(
-    model = model,
-    tokenizer = tokenizer,
-    train_dataset = dataset,
-    dataset_text_field = "text",
-    max_seq_length = max_seq_length,
-    dataset_num_proc = 2,
-    packing = False, # Can make training 5x faster for short sequences
-    args = SFTConfig(
-        per_device_train_batch_size = 2,
-        gradient_accumulation_steps = 4,
-        warmup_steps = 5,
-        max_steps = 60, # ~3 epochs for 200 samples
-        learning_rate = 2e-4,
-        fp16 = not torch.cuda.is_bf16_supported(),
-        bf16 = torch.cuda.is_bf16_supported(),
-        logging_steps = 5, # Very frequent logs as requested
-        optim = "adamw_8bit",
-        weight_decay = 0.01,
-        lr_scheduler_type = "linear",
-        seed = 3407,
-        output_dir = "outputs",
-        save_steps = 10, # Save checkpoint every 10 steps
-        save_total_limit = 3, # Keep only the last 3 checkpoints to save disk space
-        report_to = "none", # Change to "wandb" if you use Weights & Biases
+    model=model,
+    tokenizer=tokenizer,
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
+    dataset_text_field="text",
+    max_seq_length=max_seq_length,
+    dataset_num_proc=2,
+    packing=True,                 # 🔥 SPEED BOOST
+  args=SFTConfig(
+    per_device_train_batch_size=2,
+    gradient_accumulation_steps=4,
+    warmup_steps=20,
+    max_steps=400,
+    learning_rate=2e-5,
+    fp16=not torch.cuda.is_bf16_supported(),
+    bf16=torch.cuda.is_bf16_supported(),
+    logging_steps=10,
+    eval_strategy="steps",
+    eval_steps=20,
+    save_steps=40,   # ✅ FIXED
+    save_total_limit=2,
+    load_best_model_at_end=True,
+    optim="adamw_8bit",
+    weight_decay=0.01,
+    lr_scheduler_type="cosine",
+    seed=3407,
+    output_dir="outputs",
+    report_to="none",
+    logging_first_step=True,
+    gradient_checkpointing_kwargs={"use_reentrant": False},
     ),
 )
 
+checkpoint_path = "/kaggle/input/datasets/yakoob2345/checkpoint-data/checkpoint-280"
 # 6. Train!
-trainer_stats = trainer.train()
+trainer.train(resume_from_checkpoint=checkpoint_path)
 
 # 7. Save Model
 model.save_pretrained("legal_model_lora") # Local saving
