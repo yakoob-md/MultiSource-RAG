@@ -21,7 +21,7 @@ export const router = createBrowserRouter([
     path: "/app",
     Component: MainLayout,
     children: [
-      { index: true, Component: Dashboard },
+      { index: true, Component: AskAI },
       { path: "ask", Component: AskAI },
       { path: "sources", Component: KnowledgeSources },
       { path: "upload-pdf", Component: UploadPDF },

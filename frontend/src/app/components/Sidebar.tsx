@@ -48,7 +48,7 @@ export function Sidebar() {
   const youtubeSources = sources.filter(s => s.type === 'youtube');
 
   return (
-    <div className="w-80 h-full bg-white dark:bg-[#1E293B] border-r border-gray-200 dark:border-gray-800 flex flex-col transition-colors">
+    <div className="w-80 h-full bg-white dark:bg-[#0A0A0B] border-r border-gray-200 dark:border-white/5 flex flex-col transition-colors">
 
       {/* Header */}
       <div className="p-6 border-b border-gray-200 dark:border-gray-800">
