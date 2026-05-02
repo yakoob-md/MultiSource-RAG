@@ -232,7 +232,8 @@ export async function queryRag(
   question: string, 
   sourceIds?: string[], 
   imageId?: string, 
-  includeRecentImages?: boolean
+  includeImages?: boolean,
+  llmProvider: string = "groq"
 ): Promise<QueryResponse> {
   const res = await fetch(`${API_BASE}/query`, {
     method: 'POST',
@@ -243,6 +244,7 @@ export async function queryRag(
       conversation_id: (window as any).currentConversationId || null,
       image_id: imageId || null,
       include_images: includeImages || false,
+      llm_provider: llmProvider,
     }),
   });
 
@@ -288,7 +290,8 @@ export async function streamQueryRag(
   onMeta: (meta: { chatId: string; citations: Citation[]; retrievedChunks: RetrievedChunk[] }) => void,
   onError: (err: Error) => void,
   imageId?: string,
-  includeImages?: boolean
+  includeImages?: boolean,
+  llmProvider: string = "groq"
 ): Promise<void> {
   try {
     const res = await fetch(`${API_BASE}/query/stream`, {
@@ -301,6 +304,7 @@ export async function streamQueryRag(
         conversation_id: (window as any).currentConversationId || null,
         image_id: imageId || null,
         include_images: includeImages || false,
+        llm_provider: llmProvider,
       }),
     });
 

@@ -1,7 +1,8 @@
 from groq import Groq
+import requests
 from dataclasses import dataclass
 from typing import Generator
-from backend.config import GROQ_API_KEY, GROQ_MODEL, GROQ_TIMEOUT
+from backend.config import GROQ_API_KEY, GROQ_MODEL, GROQ_TIMEOUT, HF_API_KEY, HF_LEGAL_MODEL_ID
 from backend.rag.retriever import RetrievedChunk
 
 
@@ -171,6 +172,39 @@ def _get_groq_client() -> Groq:
     return Groq(api_key=GROQ_API_KEY)
 
 
+def _call_hf_api(messages: list[dict]) -> str:
+    """Call Hugging Face Inference API for the fine-tuned model."""
+    if not HF_API_KEY or not HF_LEGAL_MODEL_ID:
+        raise ValueError("HF_API_KEY or HF_LEGAL_MODEL_ID not set in config.")
+        
+    api_url = f"https://api-inference.huggingface.co/models/{HF_LEGAL_MODEL_ID}"
+    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+    
+    # Convert chat history to a single string prompt (HF Inference API often expects string inputs for causal LM)
+    # Basic chat template approximation
+    prompt = ""
+    for m in messages:
+        if m["role"] == "system":
+            prompt += f"<<SYS>>\n{m['content']}\n<</SYS>>\n\n"
+        elif m["role"] == "user":
+            prompt += f"[INST] {m['content']} [/INST] "
+        elif m["role"] == "assistant":
+            prompt += f"{m['content']} </s><s>"
+            
+    response = requests.post(api_url, headers=headers, json={
+        "inputs": prompt,
+        "parameters": {"max_new_tokens": 1024, "temperature": 0.3, "return_full_text": False}
+    }, timeout=GROQ_TIMEOUT)
+    
+    if response.status_code == 200:
+        res = response.json()
+        if isinstance(res, list) and len(res) > 0 and "generated_text" in res[0]:
+            return res[0]["generated_text"].strip()
+        return str(res)
+    else:
+        raise RuntimeError(f"HF API Error {response.status_code}: {response.text}")
+
+
 def _build_citations(chunks: list[RetrievedChunk]) -> list[Citation]:
     """
     Build citation list from top 5 chunks, one citation per unique source.
@@ -203,6 +237,7 @@ def generate_answer_stream(
     chunks       : list[RetrievedChunk],
     history      : list[ChatMessage] | None = None,
     image_context: str | None = None,
+    llm_provider : str | None = "groq",
 ) -> Generator[str, None, None]:
     """
     Streaming answer generation with chat history support.
@@ -227,6 +262,14 @@ def generate_answer_stream(
           f"history_turns={len(history) if history else 0} | "
           f"total_messages={len(messages)}")
 
+    if llm_provider == "huggingface":
+        # HF API doesn't robustly support SSE without dedicated endpoints.
+        # We will block, fetch the whole answer, and yield it as one token.
+        print(f"[Generator] Using HF API for {HF_LEGAL_MODEL_ID}")
+        answer = _call_hf_api(messages)
+        yield answer
+        return
+
     client = _get_groq_client()
 
     stream = client.chat.completions.create(
@@ -249,6 +292,7 @@ def generate_answer(
     chunks       : list[RetrievedChunk],
     history      : list[ChatMessage] | None = None,
     image_context: str | None = None,
+    llm_provider : str | None = "groq",
 ) -> GeneratedAnswer:
     """
     Non-streaming answer generation with chat history support.
@@ -277,24 +321,29 @@ def generate_answer(
           f"history_turns={len(history) if history else 0} | "
           f"total_messages={len(messages)}")
 
-    # ── Step 2: Call Groq ─────────────────────────────────────────────────────
+    # ── Step 2: Call Groq or HF ────────────────────────────────────────────────
     try:
-        client = _get_groq_client()
+        if llm_provider == "huggingface":
+            print(f"[Generator] Sending to HF API: {HF_LEGAL_MODEL_ID}")
+            answer = _call_hf_api(messages)
+        else:
+            client = _get_groq_client()
 
-        stream = client.chat.completions.create(
-            model    = GROQ_MODEL,
-            messages = messages,
-            stream   = True,
-            timeout  = GROQ_TIMEOUT,
-        )
+            stream = client.chat.completions.create(
+                model    = GROQ_MODEL,
+                messages = messages,
+                stream   = True,
+                timeout  = GROQ_TIMEOUT,
+            )
 
-        tokens = []
-        for chunk_response in stream:
-            token = chunk_response.choices[0].delta.content
-            if token is not None:
-                tokens.append(token)
+            tokens = []
+            for chunk_response in stream:
+                token = chunk_response.choices[0].delta.content
+                if token is not None:
+                    tokens.append(token)
 
-        answer = "".join(tokens).strip()
+            answer = "".join(tokens).strip()
+            
         print(f"[Generator] Done | {len(answer)} chars")
 
     except ValueError:

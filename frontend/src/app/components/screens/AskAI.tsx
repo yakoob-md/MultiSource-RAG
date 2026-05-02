@@ -24,9 +24,10 @@ export function AskAI() {
   const [error, setError] = useState<string | null>(null);
   const [selectedChunks, setSelectedChunks] = useState<RetrievedChunk[]>([]);
 
-  // ── Source selector ───────────────────────────────────────────────────────
+  // ── Source selector & Provider ──────────────────────────────────────────────
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
   const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set());
+  const [llmProvider, setLlmProvider] = useState<string>('groq');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -166,7 +167,10 @@ export function AskAI() {
              // but our backend returns it at the end usually or in meta
           }
         },
-        (err) => { throw err; }
+        (err) => { throw err; },
+        undefined, // imageId
+        false,     // includeImages
+        llmProvider
       );
 
       const aiMsg: ChatMessage = {
@@ -408,6 +412,19 @@ export function AskAI() {
         {/* Input */}
         <div className="p-8 bg-white dark:bg-[#0F172A] border-t border-gray-200 dark:border-gray-800">
           <form onSubmit={handleSubmit} className="max-w-4xl mx-auto relative">
+            <div className="flex justify-between items-center mb-3 px-2">
+               <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                  <span>Model:</span>
+                  <select 
+                     value={llmProvider}
+                     onChange={(e) => setLlmProvider(e.target.value)}
+                     className="bg-transparent border-none text-[#6366F1] font-bold focus:outline-none cursor-pointer"
+                  >
+                     <option value="groq">Llama-3 (Groq - Fast)</option>
+                     <option value="huggingface">Legal Model (HF API)</option>
+                  </select>
+               </div>
+            </div>
             <div className="relative group">
               <textarea
                 value={question}
