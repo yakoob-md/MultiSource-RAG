@@ -11,16 +11,16 @@ import { KnowledgeSource } from '../types';
 import { fetchSources } from '../api';
 
 const navigation = [
-  { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-  { name: 'Ask AI', path: '/ask', icon: MessageSquare },
-  { name: 'Legal AI', path: '/legal', icon: Gavel },
-  { name: 'Vision / Image', path: '/upload-image', icon: ImageIcon },
-  { name: 'Knowledge Sources', path: '/sources', icon: Database },
-  { name: 'Upload PDF', path: '/upload-pdf', icon: FileText },
-  { name: 'Add Website', path: '/add-website', icon: Globe },
-  { name: 'Add YouTube', path: '/add-youtube', icon: Youtube },
-  { name: 'Query History', path: '/history', icon: History },
-  { name: 'Settings', path: '/settings', icon: SettingsIcon },
+  { name: 'Dashboard', path: '/app', icon: LayoutDashboard },
+  { name: 'Ask AI', path: '/app/ask', icon: MessageSquare },
+  { name: 'Legal AI', path: '/app/legal', icon: Gavel },
+  { name: 'Vision / Image', path: '/app/upload-image', icon: ImageIcon },
+  { name: 'Knowledge Sources', path: '/app/sources', icon: Database },
+  { name: 'Upload PDF', path: '/app/upload-pdf', icon: FileText },
+  { name: 'Add Website', path: '/app/add-website', icon: Globe },
+  { name: 'Add YouTube', path: '/app/add-youtube', icon: Youtube },
+  { name: 'Query History', path: '/app/history', icon: History },
+  { name: 'Settings', path: '/app/settings', icon: SettingsIcon },
 ];
 
 export function Sidebar() {
@@ -58,8 +58,8 @@ export function Sidebar() {
               <MessageSquare className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-gray-900 dark:text-[#F8FAFC] tracking-tight">UMKA</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Knowledge Assistant</p>
+              <h1 className="text-gray-900 dark:text-[#F8FAFC] tracking-tight font-black">InteleX</h1>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold">Intelligence</p>
             </div>
           </div>
           <button
@@ -76,8 +76,8 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="px-3 py-4 space-y-1 border-b border-gray-200 dark:border-gray-800">
         {navigation.map((item) => {
-          const isActive = item.path === '/'
-            ? location.pathname === '/'
+          const isActive = item.path === '/app'
+            ? location.pathname === '/app' || location.pathname === '/app/'
             : location.pathname.startsWith(item.path);
 
           return (
@@ -158,7 +158,7 @@ export function Sidebar() {
       {/* New Source Button */}
       <div className="p-4 border-t border-gray-200 dark:border-gray-800">
         <Link
-          to="/sources"
+          to="/app/sources"
           className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />

@@ -10,10 +10,15 @@ import { QueryHistory } from "./components/screens/QueryHistory";
 import { Settings } from "./components/screens/Settings";
 import { LegalSearch } from "./components/screens/LegalSearch";
 import { UploadImage } from "./components/screens/UploadImage";
+import { Landing } from "./components/screens/Landing";
 
 export const router = createBrowserRouter([
   {
     path: "/",
+    Component: Landing,
+  },
+  {
+    path: "/app",
     Component: MainLayout,
     children: [
       { index: true, Component: Dashboard },

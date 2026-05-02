@@ -2,10 +2,11 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Send, RotateCcw, Loader2, FileText, Globe, Youtube,
   Plus, MessageSquare, Trash2, Edit2, Check, X,
-  ChevronLeft, ChevronRight, ExternalLink, Paperclip, Image as ImageIcon
+  ChevronLeft, ChevronRight, ExternalLink, Paperclip, Image as ImageIcon,
+  Database, Upload, Link as LinkIcon, Video
 } from 'lucide-react';
 import { ChatMessage, RetrievedChunk, KnowledgeSource } from '../../types';
-import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, createConversation, deleteConversation, renameConversation, Conversation, uploadImage } from '../../api';
+import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, createConversation, deleteConversation, renameConversation, Conversation, uploadImage, uploadPdf, addWebsite, addYouTube } from '../../api';
 
 export function AskAI() {
   // ── Conversation state ────────────────────────────────────────────────────
@@ -34,6 +35,16 @@ export function AskAI() {
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Knowledge Base (Resources) state ───────────────────────────────────────
+  const [isKbOpen, setIsKbOpen] = useState(false);
+  const [kbPage, setKbPage] = useState(1);
+  const KB_ITEMS_PER_PAGE = 4;
+  const [isUploadingSource, setIsUploadingSource] = useState(false);
+  const [uploadUrlInput, setUploadUrlInput] = useState('');
+  const [uploadType, setUploadType] = useState<'url' | 'youtube'>('url');
+  const sourceFileInputRef = useRef<HTMLInputElement>(null);
+  const [postUploadPrompt, setPostUploadPrompt] = useState<{source: KnowledgeSource} | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -142,6 +153,73 @@ export function AskAI() {
     setActiveImageId(null);
     setImagePreviewUrl(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // ── Knowledge Base Upload & Selection logic ────────────────────────────────
+  const toggleSourceSelection = (sourceId: string) => {
+    setSelectedSourceIds(prev => {
+      const next = new Set(prev);
+      if (next.has(sourceId)) next.delete(sourceId);
+      else next.add(sourceId);
+      return next;
+    });
+  };
+
+  const handleSourceFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingSource(true);
+    try {
+      const src = await uploadPdf(file);
+      setSources(prev => [src, ...prev]);
+      setPostUploadPrompt({ source: src });
+      setIsKbOpen(false); // Close KB to show the prompt
+    } catch (err: any) {
+      setError(err.message || "PDF Upload failed");
+    } finally {
+      setIsUploadingSource(false);
+      if (sourceFileInputRef.current) sourceFileInputRef.current.value = '';
+    }
+  };
+
+  const handleUrlUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadUrlInput.trim()) return;
+    setIsUploadingSource(true);
+    try {
+      let src: KnowledgeSource;
+      if (uploadType === 'youtube' || uploadUrlInput.includes('youtube.com') || uploadUrlInput.includes('youtu.be')) {
+        src = await addYouTube(uploadUrlInput);
+      } else {
+        src = await addWebsite(uploadUrlInput);
+      }
+      setSources(prev => [src, ...prev]);
+      setUploadUrlInput('');
+      setPostUploadPrompt({ source: src });
+      setIsKbOpen(false);
+    } catch (err: any) {
+      setError(err.message || "URL/YouTube Upload failed");
+    } finally {
+      setIsUploadingSource(false);
+    }
+  };
+
+  const startChatWithSource = async (sourceId: string) => {
+    // 1. Clear current chat and select ONLY this source
+    setMessages([]);
+    setSelectedChunks([]);
+    setActiveConvId(null);
+    setSelectedSourceIds(new Set([sourceId]));
+    setPostUploadPrompt(null);
+    
+    // 2. Create new chat immediately
+    try {
+      const conv = await createConversation(`Chat about new resource`);
+      setActiveConvId(conv.id);
+      setConversations(prev => [conv, ...prev]);
+    } catch (err) {
+      console.error("Failed to create conversation auto", err);
+    }
   };
 
   // ── Submit question ───────────────────────────────────────────────────────
@@ -343,7 +421,6 @@ export function AskAI() {
 
       {/* ── Main Chat Area ─────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
         <div className="px-8 py-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-white/80 dark:bg-[#0F172A]/80 backdrop-blur-md sticky top-0 z-10">
           <div className="flex items-center gap-4">
              <div className="p-2 rounded-xl bg-[#6366F1]/10 text-[#6366F1]">
@@ -362,6 +439,13 @@ export function AskAI() {
                 </p>
              </div>
           </div>
+          <button 
+            onClick={() => setIsKbOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-sm font-bold text-gray-700 dark:text-gray-300 transition-colors shadow-sm border border-gray-200 dark:border-gray-700"
+          >
+            <Database className="w-4 h-4 text-[#6366F1]" />
+            Knowledge Base
+          </button>
         </div>
 
         {/* Messages */}
@@ -371,11 +455,9 @@ export function AskAI() {
               <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#6366F1] to-[#818CF8] flex items-center justify-center mb-6 shadow-xl shadow-[#6366F1]/20">
                 <Send className="w-10 h-10 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
-                How can I help you today?
-              </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm leading-relaxed">
-                I can analyze your legal documents, summarize YouTube videos, or answer questions from your web sources.
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">How can InteleX assist you?</h2>
+              <p className="text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                Ask questions about your uploaded documents, websites, or YouTube videos. InteleX provides citations for every answer.
               </p>
             </div>
           )}
@@ -493,7 +575,7 @@ export function AskAI() {
               <textarea
                 value={question}
                 onChange={e => setQuestion(e.target.value)}
-                placeholder="Ask about your documents or upload an image..."
+                placeholder="Message InteleX..."
                 rows={1}
                 className="w-full px-6 py-5 pl-14 pr-24 rounded-3xl bg-gray-50 dark:bg-[#1E293B] border border-transparent dark:border-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:bg-white dark:focus:bg-[#1E293B] transition-all resize-none shadow-inner min-h-[64px] max-h-48 overflow-y-auto"
                 onKeyDown={e => {
@@ -576,6 +658,198 @@ export function AskAI() {
             )}
          </div>
       </div>
+
+      {/* ── Knowledge Base Modal ─────────────────────────────────────────── */}
+      {isKbOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#0F172A] w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-gray-200 dark:border-gray-800">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-[#1E293B]">
+              <div className="flex items-center gap-3">
+                <Database className="w-6 h-6 text-[#6366F1]" />
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Resource Manager</h2>
+              </div>
+              <button onClick={() => setIsKbOpen(false)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Upload Section (Left) */}
+              <div className="md:col-span-1 space-y-6">
+                <div className="p-5 bg-gray-50 dark:bg-[#1E293B] rounded-2xl border border-gray-200 dark:border-gray-700">
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Upload className="w-4 h-4 text-[#6366F1]" /> Upload File
+                  </h3>
+                  <input type="file" ref={sourceFileInputRef} onChange={handleSourceFileUpload} accept=".pdf,.txt,.docx" className="hidden" />
+                  <button 
+                    onClick={() => sourceFileInputRef.current?.click()}
+                    disabled={isUploadingSource}
+                    className="w-full py-3 px-4 bg-white dark:bg-[#0F172A] border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl hover:border-[#6366F1] dark:hover:border-[#6366F1] transition-colors flex flex-col items-center justify-center gap-2 text-gray-500 disabled:opacity-50"
+                  >
+                    {isUploadingSource ? <Loader2 className="w-6 h-6 animate-spin text-[#6366F1]" /> : <FileText className="w-6 h-6" />}
+                    <span className="text-sm font-medium">{isUploadingSource ? "Processing..." : "Select Document"}</span>
+                  </button>
+                </div>
+
+                <div className="p-5 bg-gray-50 dark:bg-[#1E293B] rounded-2xl border border-gray-200 dark:border-gray-700">
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <LinkIcon className="w-4 h-4 text-emerald-500" /> Web & Video
+                  </h3>
+                  <form onSubmit={handleUrlUpload} className="space-y-3">
+                    <select 
+                      value={uploadType} 
+                      onChange={(e) => setUploadType(e.target.value as any)}
+                      className="w-full p-2 rounded-lg bg-white dark:bg-[#0F172A] border border-gray-300 dark:border-gray-600 text-sm focus:ring-2 focus:ring-[#6366F1] outline-none"
+                    >
+                      <option value="url">Website URL</option>
+                      <option value="youtube">YouTube Video</option>
+                    </select>
+                    <input 
+                      type="url" 
+                      placeholder="Paste link here..." 
+                      value={uploadUrlInput}
+                      onChange={(e) => setUploadUrlInput(e.target.value)}
+                      className="w-full p-2 rounded-lg bg-white dark:bg-[#0F172A] border border-gray-300 dark:border-gray-600 text-sm focus:ring-2 focus:ring-[#6366F1] outline-none"
+                    />
+                    <button 
+                      type="submit" 
+                      disabled={!uploadUrlInput.trim() || isUploadingSource}
+                      className="w-full py-2 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex justify-center items-center gap-2"
+                    >
+                      {isUploadingSource ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                      Add Link
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              {/* Resources List (Right) */}
+              <div className="md:col-span-2 flex flex-col h-full min-h-[400px]">
+                <div className="flex justify-between items-end mb-4">
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Your Resources</h3>
+                  <span className="text-sm text-gray-500 font-medium">
+                    {selectedSourceIds.size > 0 ? `${selectedSourceIds.size} selected for RAG` : 'Global RAG (All selected by default)'}
+                  </span>
+                </div>
+                
+                {sources.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-gray-400 p-8 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-2xl">
+                    <Database className="w-12 h-12 mb-3 opacity-20" />
+                    <p>No resources uploaded yet.</p>
+                  </div>
+                ) : (
+                  <div className="flex-1 space-y-3">
+                    {sources.slice((kbPage - 1) * KB_ITEMS_PER_PAGE, kbPage * KB_ITEMS_PER_PAGE).map(src => (
+                      <div 
+                        key={src.id} 
+                        onClick={() => toggleSourceSelection(src.id)}
+                        className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between ${
+                          selectedSourceIds.has(src.id) 
+                            ? 'border-[#6366F1] bg-[#6366F1]/5' 
+                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1E293B] hover:border-gray-300 dark:hover:border-gray-600'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <div className={`p-2 rounded-lg flex-shrink-0 ${
+                            src.type === 'pdf' || src.type === 'judgment' ? 'bg-red-100 text-red-600' : 
+                            src.type === 'youtube' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+                          }`}>
+                            {src.type === 'youtube' ? <Youtube className="w-5 h-5" /> : 
+                             src.type === 'url' ? <Globe className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
+                          </div>
+                          <div className="truncate">
+                            <h4 className="font-semibold text-gray-900 dark:text-white truncate" title={src.title || src.id}>
+                              {src.title || src.id}
+                            </h4>
+                            <div className="flex gap-2 text-xs text-gray-500 font-medium mt-1">
+                              <span className="uppercase tracking-wider px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">{src.type}</span>
+                              <span>{src.chunkCount} chunks</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className={`w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ${
+                          selectedSourceIds.has(src.id) ? 'bg-[#6366F1] border-[#6366F1]' : 'border-gray-300 dark:border-gray-600'
+                        }`}>
+                          {selectedSourceIds.has(src.id) && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Pagination */}
+                {sources.length > KB_ITEMS_PER_PAGE && (
+                  <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200 dark:border-gray-800">
+                    <button 
+                      disabled={kbPage === 1} 
+                      onClick={() => setKbPage(p => p - 1)}
+                      className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 transition-colors"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <span className="text-sm font-medium text-gray-500">
+                      Page {kbPage} of {Math.ceil(sources.length / KB_ITEMS_PER_PAGE)}
+                    </span>
+                    <button 
+                      disabled={kbPage >= Math.ceil(sources.length / KB_ITEMS_PER_PAGE)} 
+                      onClick={() => setKbPage(p => p + 1)}
+                      className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 transition-colors"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#1E293B] flex justify-between items-center">
+              <p className="text-xs text-gray-500">
+                Tip: Leave all unselected to search across your entire knowledge base.
+              </p>
+              <button 
+                onClick={() => setIsKbOpen(false)}
+                className="px-6 py-2 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-xl font-medium transition-colors shadow-lg shadow-[#6366F1]/20"
+              >
+                Apply Selection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Post-Upload Action Prompt ────────────────────────────────────── */}
+      {postUploadPrompt && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-[#1E293B] w-full max-w-md rounded-3xl shadow-2xl p-8 border border-gray-200 dark:border-gray-700 text-center">
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Check className="w-8 h-8" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Resource Processed!</h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
+              "{postUploadPrompt.source.title || postUploadPrompt.source.id}" has been chunked and embedded successfully.
+            </p>
+            <div className="space-y-3">
+              <button 
+                onClick={() => startChatWithSource(postUploadPrompt.source.id)}
+                className="w-full py-3 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#6366F1]/20 flex items-center justify-center gap-2"
+              >
+                <MessageSquare className="w-5 h-5" />
+                Start Chatting with this Resource
+              </button>
+              <button 
+                onClick={() => setPostUploadPrompt(null)}
+                className="w-full py-3 bg-gray-100 dark:bg-[#0F172A] hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl font-bold transition-colors"
+              >
+                No, just save it to Knowledge Base
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

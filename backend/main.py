@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(
-    title="UMKA RAG System",
+    title="InteleX RAG System",
     version="2.2.0",
     lifespan=lifespan
 )
