@@ -1,28 +1,39 @@
-My RAG system returns 0 results silently. Fix the following in backend/rag/retriever.py and backend/vectorstore/faiss_store.py:
-Problem 1: Silent FAISS failure
-In faiss_store.py, the _get_index() function loads silently. Add:
+My RAG chat UI shows nothing because streaming is broken. There are TWO streaming endpoints with conflicting response formats. Fix this completely.
+Problem: backend/api/stream.py sends {"token": "..."} and {"done": true} but backend/api/query.py sends {"type": "token", "content": "..."} and {"type": "done"}. The frontend streamQueryRag in api.ts tries to parse one format but receives the other.
+Fix 1: Deprecate stream.py
+In backend/main.py, comment out app.include_router(stream_router). Add a comment: # DEPRECATED: use /query-stream from query.py instead
+Fix 2: Standardize query.py streaming format
+In backend/api/query.py, the /query-stream endpoint's event_stream() generator must send EXACTLY this format:
+python# Meta event (first):
+yield f"data: {json.dumps({'type': 'meta', 'chatId': chat_id, 'conversationId': conv_id, 'citations': citations_out, 'retrievedChunks': chunks_out})}\n\n"
 
-If FAISS_INDEX_PATH doesn't exist, log a clear warning: "[FAISS] No index found at {path}. Ingest documents first."
-Add a get_stats() function returning {"total_vectors": int, "index_path": str, "exists": bool}
+# Token events:
+yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
 
-Problem 2: retrieve() swallows errors
-In retriever.py, the main retrieve() function has no error boundaries. Wrap each step (embed, search, fetch MySQL, rerank) in try/except and log which step failed.
-Problem 3: Add a test endpoint
-In backend/api/query.py, add a GET endpoint /query/debug that:
+# Done event (last):
+yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
-Embeds the string "test query"
-Calls search_vectors with top_k=3
-Returns what FAISS found (chunk IDs and scores)
-Also queries MySQL for those chunk IDs
-Returns full diagnostic JSON
-
-Problem 4: Fix the generate_multi_answer empty-chunks case
-In backend/rag/multi_generator.py, if result.all_chunks is empty, the current message is generic. Change it to:
-python"I searched your knowledge base but found no relevant information. 
- This usually means: (1) no documents have been ingested yet, 
- (2) your question doesn't match any uploaded content, or 
- (3) the FAISS index is empty. 
- Please upload a PDF or website first, then try again."
-Problem 5: Fix multi_retrieve fallback
-In backend/rag/multi_retriever.py, retrieve_single_source() calls retrieve(question, source_ids=source_ids) but the signature is retrieve(question, source_ids). Verify argument names match retriever.py exactly. If not, fix the call.
-
+# Error event (on exception):
+yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+Fix 3: Fix streamQueryRag in frontend/src/app/api.ts
+The function currently checks parsed.token (old format). Update the SSE parser to:
+typescriptif (parsed.type === 'error') { onError(new Error(parsed.message)); return; }
+if (parsed.type === 'meta') {
+  // map citations and retrievedChunks (same mapping as before)
+  onMeta({ chatId: parsed.chatId, conversationId: parsed.conversationId, citations, retrievedChunks });
+}
+if (parsed.type === 'token' && parsed.content) { onToken(parsed.content); }
+if (parsed.type === 'done') { return; }
+Fix 4: Update AskAI.tsx
+The onMeta callback receives conversationId now. Store it:
+typescript(meta) => {
+  capturedCitations = meta.citations || [];
+  capturedChunks = meta.retrievedChunks || [];
+  if (meta.conversationId && !convId) {
+    convId = meta.conversationId;
+    setActiveConvId(convId);
+  }
+  setSelectedChunks(capturedChunks);
+}
+Fix 5: Add connection error handling
+Wrap the fetch call in streamQueryRag with a try/catch that checks if the server is reachable. If fetch throws TypeError: Failed to fetch, call onError(new Error("Cannot connect to server. Is the backend running on port 8000?")).

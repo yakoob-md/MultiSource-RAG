@@ -159,7 +159,7 @@ def build_synthesis_prompt(question: str, result: MultiSourceResult, history: li
 def generate_multi_answer(question: str, result: MultiSourceResult, history: list[dict] | None = None, image_context: str | None = None) -> GeneratedAnswer:
     if not result.all_chunks:
         return GeneratedAnswer(
-            answer="I don't have enough information to answer this question from the current sources.",
+            answer="I searched your knowledge base but found no relevant information. \n This usually means: (1) no documents have been ingested yet, \n (2) your question doesn't match any uploaded content, or \n (3) the FAISS index is empty. \n Please upload a PDF or website first, then try again.",
             citations=[],
             chunks=[]
         )

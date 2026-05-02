@@ -345,6 +345,11 @@ def retrieve(question: str, source_ids: list[str] | None = None) -> list[Retriev
         # Scores the RERANK_POOL candidates with full query-passage attention,
         # returns only the best TOP_K with reranker scores attached
         final_chunks = _rerank(question, pre_rerank_chunks, top_n=TOP_K)
+    
+        # ── DEBUG: Print scores to console ──
+        for c in final_chunks:
+            print(f"[Retriever] Chunk {c.chunk_id[:8]} rerank score: {c.score:.4f}")
+
     except Exception as e:
         print(f"[Retriever] Error in cross-encoder reranking: {e}")
         # Fallback: return the RRF results if reranker fails

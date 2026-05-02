@@ -341,6 +341,11 @@ export function AskAI() {
             capturedChunks = meta.retrievedChunks;
             setSelectedChunks(capturedChunks);
           }
+          // Store conversationId if it's a new chat
+          if (meta.conversationId && !activeConvId) {
+            setActiveConvId(meta.conversationId);
+            (window as any).currentConversationId = meta.conversationId;
+          }
         },
         (err) => { throw err; },
         activeImageId || undefined,

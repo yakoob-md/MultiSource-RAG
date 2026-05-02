@@ -280,21 +280,22 @@ export async function queryRag(
   };
 }
 
-// frontend/src/app/api.ts — streamQueryRag FIXED
+// ── Streaming API ───────────────────────────────────────────────────────────
 
 export async function streamQueryRag(
   question: string,
   sourceIds: string[] | undefined,
   history: Array<{ role: string; content: string }>,
   onToken: (token: string) => void,
-  onMeta: (meta: { chatId: string; citations: Citation[]; retrievedChunks: RetrievedChunk[] }) => void,
+  onMeta: (meta: { chatId: string; conversationId?: string; citations: Citation[]; retrievedChunks: RetrievedChunk[] }) => void,
   onError: (err: Error) => void,
   imageId?: string,
   includeImages?: boolean,
   llmProvider: string = "groq"
 ): Promise<void> {
+  let response: Response;
   try {
-    const res = await fetch(`${API_BASE}/query/stream`, {
+    response = await fetch(`${API_BASE}/query-stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -307,14 +308,29 @@ export async function streamQueryRag(
         llm_provider: llmProvider,
       }),
     });
+  } catch (err) {
+    if (err instanceof TypeError && err.message.includes('fetch')) {
+      onError(new Error("Cannot connect to server. Is the backend running on port 8000?"));
+    } else {
+      onError(err instanceof Error ? err : new Error(String(err)));
+    }
+    return;
+  }
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    if (!res.body) throw new Error('No response body');
+  if (!response.ok) {
+    onError(new Error(`Server returned ${response.status}`));
+    return;
+  }
+  if (!response.body) {
+    onError(new Error('No response body from server'));
+    return;
+  }
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
 
+  try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -331,25 +347,20 @@ export async function streamQueryRag(
         try {
           const parsed = JSON.parse(jsonStr);
 
-          if (parsed.error) {
-            onError(new Error(parsed.error));
+          if (parsed.type === 'error') {
+            onError(new Error(parsed.message || "Unknown streaming error"));
             return;
           }
 
-          // Token event
-          if (parsed.type === 'token' || (parsed.token !== undefined && parsed.token !== '')) {
-            onToken(parsed.type === 'token' ? parsed.content : parsed.token);
-          }
-
-          // Meta event (sent at start by backend)
           if (parsed.type === 'meta') {
-            const citations = (parsed.citations || []).map((c: any) => ({
+            const citations: Citation[] = (parsed.citations || []).map((c: any) => ({
               sourceTitle: c.sourceTitle || c.source_title || '',
               sourceType: (c.sourceType === 'url' ? 'web' : c.sourceType || 'pdf') as any,
               reference: c.reference || '',
               snippet: c.snippet || '',
             }));
-            const retrievedChunks = (parsed.retrievedChunks || []).map((c: any, i: number) => ({
+
+            const retrievedChunks: RetrievedChunk[] = (parsed.retrievedChunks || []).map((c: any, i: number) => ({
               id: c.chunkId || String(i),
               sourceId: c.sourceId || '',
               sourceName: c.sourceTitle || '',
@@ -358,43 +369,24 @@ export async function streamQueryRag(
               similarityScore: c.score || 0,
               metadata: { page: c.pageNumber, timestamp: c.timestampS, url: c.urlRef }
             }));
-            onMeta({ chatId: parsed.chatId || '', citations, retrievedChunks });
+
+            onMeta({ 
+              chatId: parsed.chatId || '', 
+              conversationId: parsed.conversationId, 
+              citations, 
+              retrievedChunks 
+            });
           }
 
-          // Done event — stream.py sends citations + retrievedChunks here
-          if (parsed.done) {
-            const rawCitations = parsed.citations || [];
-            const rawChunks = parsed.retrievedChunks || [];
+          if (parsed.type === 'token' && parsed.content) {
+            onToken(parsed.content);
+          }
 
-            const citations: Citation[] = rawCitations.map((c: any) => ({
-              sourceTitle: c.source_title || c.sourceTitle || '',
-              sourceType: (c.source_type === 'url' ? 'web' : c.source_type || 'pdf') as any,
-              reference: c.reference || '',
-              snippet: c.snippet || '',
-            }));
-
-            const retrievedChunks: RetrievedChunk[] = rawChunks.map((c: any, i: number) => ({
-              id: c.chunkId || c.chunk_id || String(i),
-              sourceId: c.sourceId || c.source_id || '',
-              sourceName: c.sourceTitle || c.source_title || '',
-              sourceType: (c.sourceType === 'url' ? 'web' : c.sourceType || 'pdf') as any,
-              language: ((c.language || 'en').toUpperCase()) as Language,
-              text: c.text || c.chunk_text || '',
-              similarityScore: typeof c.score === 'number' ? c.score : 0,
-              metadata: {
-                page: c.pageNumber ?? c.page_number,
-                timestamp: c.timestampS != null
-                  ? `${Math.floor(c.timestampS / 60)}:${String(c.timestampS % 60).padStart(2, '0')}`
-                  : undefined,
-                url: c.urlRef || c.url_ref,
-              },
-            }));
-
-            onMeta({ chatId: parsed.chatId || '', citations, retrievedChunks });
+          if (parsed.type === 'done') {
             return;
           }
-        } catch {
-          // Partial JSON — skip
+        } catch (e) {
+          // Partial JSON or parse error — skip
         }
       }
     }

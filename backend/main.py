@@ -64,7 +64,7 @@ app.include_router(sources_router)
 app.include_router(upload_router)
 app.include_router(query_router)
 app.include_router(history_router)
-app.include_router(stream_router)
+# app.include_router(stream_router)  # DEPRECATED: use /query-stream from query.py instead
 app.include_router(conversations_router, tags=["conversations"])
 
 # ── Legal routes under /legal prefix ─────────────────────────────────────────

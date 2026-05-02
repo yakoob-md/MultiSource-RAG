@@ -11,10 +11,11 @@ from pydantic import BaseModel
 from backend.rag.retriever import retrieve
 from backend.rag.generator import generate_answer, generate_answer_stream, _build_citations
 from backend.rag.query_classifier import classify_query
-from backend.rag.multi_retriever import multi_retrieve
+from backend.rag.multi_retriever import multi_retrieve, retrieve_for_comparison, retrieve_for_synthesis, retrieve_single_source
 from backend.rag.multi_generator import generate_multi_answer
 from backend.rag.image_rag import enrich_query_with_image_context   # ← Phase 2
 from backend.database.connection import get_connection
+from backend.rag.query_classifier import extract_source_filter
 import uuid
 import json
 
@@ -96,6 +97,18 @@ def query(req: QueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
 
+    # Handle 0 results case
+    if not chunks:
+        return {
+            "chatId": str(uuid.uuid4()),
+            "conversationId": req.conversation_id,
+            "answer": "I searched your knowledge base but found no relevant information. \n This usually means: (1) no documents have been ingested yet, \n (2) your question doesn't match any uploaded content, or \n (3) the FAISS index is empty. \n Please upload a PDF or website first, then try again.",
+            "citations": [],
+            "retrievedChunks": [],
+            "query_intent": analysis.intent,
+            "imageContextUsed": bool(image_context_block)
+        }
+
     # ── Step 3: Generate (inject image context into history if present) ───────
     # We prepend image context as a system-level note in history
     augmented_history = list(history) if history else []
@@ -105,12 +118,6 @@ def query(req: QueryRequest):
         ] + augmented_history
 
     try:
-        # Note: In my previous turn I updated generate_multi_answer to accept image_context.
-        # But the user's snippet doesn't use it. To avoid errors, I'll pass it if it's there
-        # OR I can just pass it as history as the user did.
-        # Actually, let's stick to the user's provided code as it was likely written for a reason.
-        # BUT I should make sure generate_multi_answer doesn't break if I DON'T pass image_context.
-        # (It had a default None, so it's fine).
         result = generate_multi_answer(enriched_question, multi_result, history=augmented_history, llm_provider=req.llm_provider)
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -186,10 +193,6 @@ def query(req: QueryRequest):
 
 @router.post("/query-stream")
 def query_stream(req: QueryRequest):
-    """
-    Streaming endpoint — Phase 2 updated.
-    NOTE: stream.py's /query/stream is DEPRECATED. Use this one.
-    """
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
@@ -202,9 +205,17 @@ def query_stream(req: QueryRequest):
         include_recent= req.include_images
     )
 
-    # Retrieve
+    # Step 1: Classify
     try:
-        chunks = retrieve(enriched_question, req.source_ids)
+        analysis = classify_query(enriched_question)
+    except:
+        from backend.rag.query_classifier import QueryAnalysis
+        analysis = QueryAnalysis(intent="single_source", source_types=["any"])
+
+    # Step 2: Retrieve
+    try:
+        multi_result = multi_retrieve(enriched_question, analysis)
+        chunks = multi_result.all_chunks
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
 
@@ -251,6 +262,12 @@ def query_stream(req: QueryRequest):
         # Event 1: meta (sources panel renders immediately)
         yield f"data: {json.dumps({'type': 'meta', 'chatId': chat_id, 'citations': citations_out, 'retrievedChunks': chunks_out, 'conversationId': conv_id_holder[0]})}\n\n"
 
+        if not chunks:
+            msg = "I searched your knowledge base but found no relevant information. \n This usually means: (1) no documents have been ingested yet, \n (2) your question doesn't match any uploaded content, or \n (3) the FAISS index is empty. \n Please upload a PDF or website first, then try again."
+            yield f"data: {json.dumps({'type': 'token', 'content': msg})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+
         # Events 2-N: token stream
         collected = []
         try:
@@ -291,3 +308,61 @@ def query_stream(req: QueryRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     )
+
+
+@router.get("/query/debug")
+def query_debug(question: str = "test query"):
+    """
+    Diagnostic endpoint to trace exactly what FAISS and MySQL are returning.
+    Usage: GET /query/debug?question=my+test+query
+    """
+    from backend.ingestion.embedder import embed_query
+    from backend.vectorstore.faiss_store import search_vectors, get_stats
+    from backend.database.connection import get_connection
+    import os
+
+    results = {
+        "question": question,
+        "faiss_stats": get_stats(),
+        "steps": []
+    }
+
+    try:
+        # 1. Embed
+        results["steps"].append("1. Embedding query...")
+        vec = embed_query(question)
+        
+        # 2. Search FAISS
+        results["steps"].append("2. Searching FAISS...")
+        raw_hits = search_vectors(vec, top_k=5)
+        results["faiss_hits"] = raw_hits
+
+        if not raw_hits:
+            results["steps"].append("⚠️ FAISS returned 0 hits.")
+            return results
+
+        # 3. Query MySQL
+        results["steps"].append(f"3. Querying MySQL for {len(raw_hits)} IDs...")
+        chunk_ids = [h["chunk_id"] for h in raw_hits]
+        placeholders = ", ".join(["%s"] * len(chunk_ids))
+        
+        with get_connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(f"""
+                SELECT id, source_id, chunk_text as snippet 
+                FROM chunks 
+                WHERE id IN ({placeholders})
+            """, chunk_ids)
+            db_rows = cursor.fetchall()
+            # Truncate snippet for visibility
+            for r in db_rows:
+                if r['snippet']:
+                    r['snippet'] = r['snippet'][:100] + "..."
+            results["db_rows"] = db_rows
+            results["steps"].append(f"✅ Found {len(db_rows)} matching rows in DB.")
+
+    except Exception as e:
+        results["error"] = str(e)
+        results["steps"].append(f"❌ FAILED at step {len(results['steps'])}")
+
+    return results
