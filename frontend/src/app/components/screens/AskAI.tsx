@@ -135,6 +135,7 @@ export function AskAI() {
   // ── Conversation state ────────────────────────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const navigate = useNavigate();
@@ -170,9 +171,19 @@ export function AskAI() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({ minHeight: 56, maxHeight: 200 });
+  
+  const toggleSourceSelection = useCallback((sourceId: string) => {
+    setSelectedSourceIds(prev => {
+        const next = new Set(prev);
+        if (next.has(sourceId)) next.delete(sourceId);
+        else next.add(sourceId);
+        return next;
+    });
+  }, []);
 
   const loadConversation = useCallback(async (convId: string) => {
     setActiveConvId(convId);
+    (window as any).currentConversationId = convId; // Sync for API context
     setMessages([]);
     setSelectedChunks([]);
     try {
@@ -224,15 +235,14 @@ export function AskAI() {
         }
     };
     const handleOpenSources = () => setIsKbOpen(true);
-    const handleOpenHistory = () => {
-        // Since we removed the overlay, opening history now triggers the Command Palette
-        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
-    };
+    const handleOpenHistory = () => setSidebarOpen(true);
     const handleNewChat = () => {
         setActiveConvId(null);
+        (window as any).currentConversationId = null;
         setMessages([]);
         setSelectedChunks([]);
         setQuestion('');
+        setSelectedSourceIds(new Set());
     };
 
     window.addEventListener('load-conversation', handleLoadConv);
@@ -464,7 +474,7 @@ export function AskAI() {
                   <button onClick={() => setIsKbOpen(true)} className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2">
                       <Database className="w-3 h-3 text-[#6366F1]" /> Sources
                   </button>
-                  <button onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))} className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2">
+                  <button onClick={() => setSidebarOpen(true)} className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2">
                       <Clock className="w-3 h-3 text-[#6366F1]" /> History
                   </button>
               </div>
@@ -523,6 +533,13 @@ export function AskAI() {
 
                 <div className="p-3 border-t border-white/5 flex items-center justify-between">
                    <div className="flex items-center gap-1">
+                      {selectedSourceIds.size > 0 && (
+                        <div className="mr-2 flex items-center gap-2 px-2 py-1 rounded-lg bg-[#6366F1]/10 border border-[#6366F1]/20">
+                           <Database className="w-3 h-3 text-[#6366F1]" />
+                           <span className="text-[9px] font-bold text-[#6366F1] uppercase">{selectedSourceIds.size} Selected</span>
+                           <button onClick={() => setSelectedSourceIds(new Set())} className="hover:text-white text-[#6366F1]/60"><X className="w-2 h-2" /></button>
+                        </div>
+                      )}
                       <button 
                         type="button"
                         onClick={() => sourceFileInputRef.current?.click()}
@@ -671,7 +688,19 @@ export function AskAI() {
                                             <p className="text-xs font-bold truncate">{source.title}</p>
                                             <p className="text-[10px] text-white/20 font-medium uppercase tracking-tighter">{new Date(source.dateAdded).toLocaleDateString()}</p>
                                         </div>
-                                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-white/20 uppercase tracking-widest">{source.status}</span>
+                                        <div className="flex items-center gap-2">
+                                            <button 
+                                                onClick={() => toggleSourceSelection(source.id)}
+                                                className={cn(
+                                                    "px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all",
+                                                    selectedSourceIds.has(source.id) 
+                                                        ? "bg-[#6366F1] text-white shadow-lg shadow-[#6366F1]/20" 
+                                                        : "bg-white/5 text-white/20 hover:bg-white/10"
+                                                )}
+                                            >
+                                                {selectedSourceIds.has(source.id) ? "Selected" : "Select"}
+                                            </button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -679,6 +708,73 @@ export function AskAI() {
                     </div>
                 </motion.div>
             </div>
+        )}
+      </AnimatePresence>
+
+      {/* History Sidebar Overlay */}
+      <AnimatePresence>
+        {sidebarOpen && (
+            <>
+                <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setSidebarOpen(false)}
+                    className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md"
+                />
+                <motion.div 
+                    initial={{ x: -320 }}
+                    animate={{ x: 0 }}
+                    exit={{ x: -320 }}
+                    className="fixed top-0 left-0 bottom-0 w-80 z-[101] bg-[#0A0A0B] border-r border-white/10 p-8 flex flex-col shadow-2xl"
+                >
+                    <div className="flex items-center justify-between mb-10">
+                        <div className="flex items-center gap-3">
+                            <History className="w-5 h-5 text-[#6366F1]" />
+                            <h2 className="text-lg font-bold tracking-tight">History</h2>
+                        </div>
+                        <button onClick={() => setSidebarOpen(false)} className="p-2 hover:bg-white/5 rounded-xl text-white/20 hover:text-white transition-all">
+                            <ChevronLeft className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto space-y-3 no-scrollbar pr-2">
+                        {conversations.length === 0 ? (
+                            <div className="py-10 text-center space-y-2">
+                                <p className="text-white/20 text-xs font-bold uppercase tracking-widest">No chats yet</p>
+                                <button onClick={handleNewChat} className="text-[10px] text-[#6366F1] font-bold underline">Start your first one</button>
+                            </div>
+                        ) : (
+                            conversations.map(conv => (
+                                <button 
+                                    key={conv.id}
+                                    onClick={() => { loadConversation(conv.id); setSidebarOpen(false); }}
+                                    className={cn(
+                                        "w-full flex flex-col gap-1 p-4 rounded-2xl transition-all border text-left group",
+                                        activeConvId === conv.id 
+                                            ? "bg-[#6366F1]/10 border-[#6366F1]/30 text-white" 
+                                            : "bg-white/[0.02] border-white/5 text-white/40 hover:bg-white/[0.04] hover:border-white/10"
+                                    )}
+                                >
+                                    <span className="text-[11px] font-bold truncate group-hover:text-white transition-colors">{conv.title}</span>
+                                    <span className="text-[9px] font-medium text-white/20 uppercase tracking-tighter">
+                                        {new Date(conv.updated_at).toLocaleDateString()}
+                                    </span>
+                                </button>
+                            ))
+                        )}
+                    </div>
+
+                    <div className="pt-6 border-t border-white/5 mt-auto">
+                        <button 
+                            onClick={handleNewChat}
+                            className="w-full py-4 bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] transition-all"
+                        >
+                            + New Conversation
+                        </button>
+                    </div>
+                </motion.div>
+            </>
         )}
       </AnimatePresence>
 
