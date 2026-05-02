@@ -24,6 +24,23 @@ export interface QueryResponse {
   answer: string;
   sources: Citation[];
   retrievedChunks: RetrievedChunk[];
+  conversationId?: string; // Added for Phase 1
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+}
+
+export interface ConversationMessage {
+  id: string;
+  question: string;
+  answer: string;
+  sourcesUsed: string[];
+  createdAt: string;
 }
 
 // ── Helper: Normalization ───────────────────────────────────────────────────
@@ -218,6 +235,7 @@ export async function queryRag(question: string, sourceIds?: string[]): Promise<
     body: JSON.stringify({
       question,
       source_ids: sourceIds && sourceIds.length > 0 ? sourceIds : null,
+      conversation_id: (window as any).currentConversationId || null, // Pass if available
     }),
   });
 
@@ -226,6 +244,7 @@ export async function queryRag(question: string, sourceIds?: string[]): Promise<
 
   return {
     answer: data.answer,
+    conversationId: data.conversationId, // Added for Phase 1
     sources: (data.citations || []).map((c: any) => ({
       sourceTitle: c.sourceTitle || c.source_title || '',
       sourceType: c.sourceType === 'url' ? 'web' : (c.sourceType || 'pdf'),
@@ -270,6 +289,7 @@ export async function streamQueryRag(
         question,
         source_ids: sourceIds && sourceIds.length > 0 ? sourceIds : null,
         history,
+        conversation_id: (window as any).currentConversationId || null,
       }),
     });
 
@@ -302,8 +322,28 @@ export async function streamQueryRag(
           }
 
           // Token event
-          if (parsed.token !== undefined && parsed.token !== '') {
-            onToken(parsed.token);
+          if (parsed.type === 'token' || (parsed.token !== undefined && parsed.token !== '')) {
+            onToken(parsed.type === 'token' ? parsed.content : parsed.token);
+          }
+
+          // Meta event (sent at start by backend)
+          if (parsed.type === 'meta') {
+            const citations = (parsed.citations || []).map((c: any) => ({
+              sourceTitle: c.sourceTitle || c.source_title || '',
+              sourceType: (c.sourceType === 'url' ? 'web' : c.sourceType || 'pdf') as any,
+              reference: c.reference || '',
+              snippet: c.snippet || '',
+            }));
+            const retrievedChunks = (parsed.retrievedChunks || []).map((c: any, i: number) => ({
+              id: c.chunkId || String(i),
+              sourceId: c.sourceId || '',
+              sourceName: c.sourceTitle || '',
+              sourceType: (c.sourceType === 'url' ? 'web' : c.sourceType || 'pdf') as any,
+              text: c.text || '',
+              similarityScore: c.score || 0,
+              metadata: { page: c.pageNumber, timestamp: c.timestampS, url: c.urlRef }
+            }));
+            onMeta({ chatId: parsed.chatId || '', citations, retrievedChunks });
           }
 
           // Done event — stream.py sends citations + retrievedChunks here
@@ -392,4 +432,44 @@ export async function queryLegal(question: string, sourceFilter?: string, modelT
     throw new Error(`Failed to query legal search: ${text}`);
   }
   return res.json();
+}
+
+// ── Conversations API ────────────────────────────────────────────────────────
+
+export async function createConversation(title = 'New Chat'): Promise<Conversation> {
+  const res = await fetch(`${API_BASE}/conversations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) throw new Error('Failed to create conversation');
+  return res.json();
+}
+
+export async function fetchConversations(): Promise<Conversation[]> {
+  const res = await fetch(`${API_BASE}/conversations`);
+  if (!res.ok) throw new Error('Failed to fetch conversations');
+  const data = await res.json();
+  return data.conversations ?? [];
+}
+
+export async function fetchConversationMessages(convId: string): Promise<{
+  conversation: { id: string; title: string };
+  messages: ConversationMessage[];
+}> {
+  const res = await fetch(`${API_BASE}/conversations/${convId}/messages`);
+  if (!res.ok) throw new Error('Failed to fetch messages');
+  return res.json();
+}
+
+export async function renameConversation(convId: string, title: string): Promise<void> {
+  await fetch(`${API_BASE}/conversations/${convId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function deleteConversation(convId: string): Promise<void> {
+  await fetch(`${API_BASE}/conversations/${convId}`, { method: 'DELETE' });
 }

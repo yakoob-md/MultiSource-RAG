@@ -33,12 +33,21 @@ CREATE TABLE IF NOT EXISTS chunks (
     FOREIGN KEY (source_id) REFERENCES sources(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS chat_history (
+CREATE TABLE IF NOT EXISTS conversations (
     id           VARCHAR(36)  PRIMARY KEY,
-    question     TEXT         NOT NULL,
-    answer       LONGTEXT     NOT NULL,
-    sources_used JSON         DEFAULT NULL,
-    created_at   DATETIME     DEFAULT CURRENT_TIMESTAMP
+    title        VARCHAR(500) DEFAULT 'New Chat',
+    created_at   DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS chat_history (
+    id              VARCHAR(36)  PRIMARY KEY,
+    conversation_id VARCHAR(36)  DEFAULT NULL,
+    question        TEXT         NOT NULL,
+    answer          LONGTEXT     NOT NULL,
+    sources_used    JSON         DEFAULT NULL,
+    created_at      DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS legal_sources (

@@ -12,6 +12,7 @@ from backend.api.stream  import router as stream_router
 from backend.api.legal_routes import router as legal_router
 from backend.api.image_routes import router as image_router
 from backend.api.legal_query_routes import router as legal_query_router
+from backend.api.conversations import router as conversations_router
 
 from backend.ingestion.embedder import get_model as preload_embedder
 from backend.rag.retriever import _get_reranker as preload_reranker
@@ -64,6 +65,7 @@ app.include_router(upload_router)
 app.include_router(query_router)
 app.include_router(history_router)
 app.include_router(stream_router)
+app.include_router(conversations_router, tags=["conversations"])
 
 # ── Legal routes under /legal prefix ─────────────────────────────────────────
 # This fixes the 404 on /legal/legal-sources that the frontend expects

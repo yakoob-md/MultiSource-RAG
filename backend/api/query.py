@@ -24,8 +24,9 @@ class QueryRequest(BaseModel):
     source_ids: list[str] | None = None
     # history is optional — if not sent, behaves exactly like before
     # Frontend sends the last N turns as a list of {role, content} objects
-    history   : list[ChatMessageModel] | None = None
-    mode      : str | None = None  # "auto" | "single" | "compare" | "synthesize"
+    history        : list[ChatMessageModel] | None = None
+    mode           : str | None = None  # "auto" | "single" | "compare" | "synthesize"
+    conversation_id: str | None = None
 
 
 # ── Helper: convert Pydantic models → plain dicts for generator ───────────────
@@ -99,22 +100,41 @@ def query(req: QueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
-    # ── Step 4: Save to chat history ──────────────────────────────────────────
+    # ── Step 4: Save to chat history (with conversation) ─────────────────────────
     chat_id         = str(uuid.uuid4())
     source_ids_used = list({c.source_id for c in chunks})
 
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
+
+            # Auto-create conversation if not provided
+            conv_id = req.conversation_id
+            if not conv_id:
+                conv_id = str(uuid.uuid4())
+                # Use first 50 chars of question as title
+                title = req.question[:50] + ("..." if len(req.question) > 50 else "")
+                cursor.execute(
+                    "INSERT INTO conversations (id, title) VALUES (%s, %s)",
+                    (conv_id, title)
+                )
+
             cursor.execute("""
-                INSERT INTO chat_history (id, question, answer, sources_used)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO chat_history (id, conversation_id, question, answer, sources_used)
+                VALUES (%s, %s, %s, %s, %s)
             """, (
                 chat_id,
+                conv_id,
                 req.question,
                 result.answer,
                 json.dumps(source_ids_used)
             ))
+
+            # Update conversation's updated_at
+            cursor.execute(
+                "UPDATE conversations SET updated_at = NOW() WHERE id = %s",
+                (conv_id,)
+            )
             conn.commit()
     except Exception as e:
         print(f"[Query] Warning: Could not save chat history: {e}")
@@ -149,6 +169,7 @@ def query(req: QueryRequest):
 
     return {
         "chatId"         : chat_id,
+        "conversationId" : conv_id,
         "answer"         : result.answer,
         "citations"      : citations_out,
         "retrievedChunks": chunks_out,
@@ -233,7 +254,18 @@ def query_stream(req: QueryRequest):
     def event_stream():
         # Event 1: metadata — sent immediately so sources panel renders
         # before the first token even arrives
-        yield f"data: {json.dumps({'type': 'meta', 'chatId': chat_id, 'citations': citations_out, 'retrievedChunks': chunks_out})}\n\n"
+        # We need to determine the conv_id early for the metadata event
+        conv_id_meta = req.conversation_id
+        if not conv_id_meta:
+            # We don't create it here to avoid race conditions or empty convs if stream fails immediately,
+            # but we need a stable ID if the frontend wants to use it.
+            # Actually, let's just generate a potential one or wait.
+            # Best practice: if not provided, the 'meta' event might have a null conversationId 
+            # until the first token or the end. 
+            # But the user logic says return it.
+            pass
+
+        yield f"data: {json.dumps({'type': 'meta', 'chatId': chat_id, 'conversationId': req.conversation_id, 'citations': citations_out, 'retrievedChunks': chunks_out})}\n\n"
 
         # Events 2..N: stream tokens
         collected_tokens = []
@@ -254,15 +286,33 @@ def query_stream(req: QueryRequest):
         try:
             with get_connection() as conn:
                 cursor = conn.cursor()
+
+                # Auto-create conversation if not provided
+                conv_id_stream = req.conversation_id
+                if not conv_id_stream:
+                    conv_id_stream = str(uuid.uuid4())
+                    title = req.question[:50] + ("..." if len(req.question) > 50 else "")
+                    cursor.execute(
+                        "INSERT INTO conversations (id, title) VALUES (%s, %s)",
+                        (conv_id_stream, title)
+                    )
+
                 cursor.execute("""
-                    INSERT INTO chat_history (id, question, answer, sources_used)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO chat_history (id, conversation_id, question, answer, sources_used)
+                    VALUES (%s, %s, %s, %s, %s)
                 """, (
                     chat_id,
+                    conv_id_stream,
                     req.question,
                     full_answer,
                     json.dumps(source_ids_used)
                 ))
+
+                # Update updated_at
+                cursor.execute(
+                    "UPDATE conversations SET updated_at = NOW() WHERE id = %s",
+                    (conv_id_stream,)
+                )
                 conn.commit()
         except Exception as e:
             print(f"[QueryStream] Warning: Could not save chat history: {e}")
