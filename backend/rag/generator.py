@@ -105,10 +105,10 @@ def _get_groq_client() -> Groq:
     return Groq(api_key=GROQ_API_KEY)
 
 
-def _call_provider(messages: list[dict], llm_provider_name: str | None) -> str:
+def _call_provider(messages: list[dict], provider_name: str | None, is_legal: bool = False) -> str:
     """Call the centralized LLM provider."""
-    mode = "finetuned" if llm_provider_name == "huggingface" else "base"
-    return llm_provider.generate(messages, mode=mode)
+    mode = "finetuned" if provider_name == "huggingface" else "base"
+    return llm_provider.generate(messages, mode=mode, is_legal=is_legal)
 
 
 def _build_citations(chunks: list[RetrievedChunk]) -> list[Citation]:
@@ -187,7 +187,7 @@ def generate_answer_stream(
 
     # ── Option 2: Fine-tuned (Kaggle/Local) ───────────────────────────────────
     try:
-        answer = llm_provider.generate(messages, mode="finetuned")
+        answer = llm_provider.generate(messages, mode="finetuned", is_legal=is_legal)
         if not answer or not answer.strip():
             yield "[SYSTEM: Fine-tuned model returned empty response. Check Kaggle bridge.]"
             return
@@ -209,7 +209,7 @@ def generate_answer(
     multi_result : MultiSourceResult,
     history      : list[ChatMessage] | None = None,
     image_context: str | None = None,
-    llm_provider : str | None = "groq",
+    provider_name: str | None = "groq",
     is_legal     : bool = False,
 ) -> GeneratedAnswer:
     """
@@ -243,7 +243,7 @@ def generate_answer(
     # ── Step 2: Call Centralized Provider ──────────────────────────────────────
     try:
         mode = "finetuned" if provider_name == "huggingface" else "base"
-        answer = llm_provider.generate(messages, mode=mode)
+        answer = llm_provider.generate(messages, mode=mode, is_legal=is_legal)
         print(f"[Generator] Done | {len(answer)} chars")
 
     except ValueError:

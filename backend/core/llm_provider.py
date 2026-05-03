@@ -100,16 +100,19 @@ class LLMProvider:
         else:
             return f"Error from HF API: {response.text}"
 
-    def generate_local(self, messages: List[Dict]) -> str:
+    def generate_local(self, messages: List[Dict], is_legal: bool = False) -> str:
         """Generate response using local 4-bit model."""
         model, tokenizer = self._get_local_model()
         
-        # Format for Llama-3/Unsloth template used in training
-        # Match the template from train_kaggle.py: Instruction / Input / Response
         system_msg = next((m['content'] for m in messages if m['role'] == 'system'), "")
         user_msg = next((m['content'] for m in messages if m['role'] == 'user'), "")
         
-        prompt = f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+        if is_legal:
+            # Optimized Legal Template: Use the system message (which already has context/question) directly
+            prompt = f"{system_msg}\n\n### Response:\n"
+        else:
+            # Standard Alpaca template
+            prompt = f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
 
 ### Instruction:
 {system_msg}
@@ -123,7 +126,7 @@ class LLMProvider:
         outputs = model.generate(**inputs, max_new_tokens=512, temperature=0.1, do_sample=True)
         return tokenizer.decode(outputs[0], skip_special_tokens=True).split("### Response:")[1].strip()
 
-    def generate(self, messages: List[Dict], mode: str = "base") -> str:
+    def generate(self, messages: List[Dict], mode: str = "base", is_legal: bool = False) -> str:
         """
         Main entry point for generation.
         mode: "base" (Groq), "finetuned" (Local, HF, or Kaggle depending on config)
@@ -133,7 +136,7 @@ class LLMProvider:
         
         # If Kaggle bridge is configured and we are in finetuned mode, use it
         if KAGGLE_BRIDGE_URL and KAGGLE_BRIDGE_URL.strip():
-            return self.generate_kaggle(messages)
+            return self.generate_kaggle(messages, is_legal=is_legal)
             
         # Fallback to other modes
         if LEGAL_MODEL_MODE == "huggingface":
@@ -141,16 +144,19 @@ class LLMProvider:
         elif LEGAL_MODEL_MODE == "ollama":
             return self.generate_ollama(messages)
         else:
-            return self.generate_local(messages)
+            return self.generate_local(messages, is_legal=is_legal)
 
-    def generate_kaggle(self, messages: List[Dict]) -> str:
+    def generate_kaggle(self, messages: List[Dict], is_legal: bool = False) -> str:
         """Generate response using Kaggle Bridge (Remote API)."""
         try:
-            # Reconstruct the prompt for the Kaggle server
             system_msg = next((m['content'] for m in messages if m['role'] == 'system'), "")
             user_msg = next((m['content'] for m in messages if m['role'] == 'user'), "")
             
-            prompt = f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+            if is_legal:
+                # Optimized Legal Template
+                prompt = f"{system_msg}\n\n### Response:\n"
+            else:
+                prompt = f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
 
 ### Instruction:
 {system_msg}

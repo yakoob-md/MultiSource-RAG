@@ -1,83 +1,29 @@
- Model switching failure — root cause
-The bug is a state synchronization problem between three layers. In LegalAssistant.tsx, llmProvider is local component state. When a streaming call starts, it reads the state at that moment. But the FastAPI streaming endpoint in query.py receives llm_provider as a field in the request body — and the call to generate_answer_stream() passes it as provider_name.
-The failure happens mid-chat because generate_answer_stream in generator.py has a fallback that defaults to Groq when the fine-tuned model times out or errors, but it does this silently. The frontend has no way to know the switch happened. The user sees an answer but it came from the wrong model.
-The second issue: in llm_provider.py, generate_kaggle() has a hardcoded 60-second timeout. The Kaggle bridge (your ngrok tunnel) often takes 45-90 seconds for a cold start. The request times out, generate_kaggle raises an exception, and generate_answer_stream catches it generically and falls through to Groq.
+Fix 2: Optimized legal prompt template
+Replace your current Alpaca template with this legal-specific template that uses chain-of-thought reasoning before the final structured answer:
+pythonLEGAL_PROMPT_TEMPLATE = """You are a Senior Legal Analyst trained on Indian law. 
+You have access to retrieved legal documents below.
 
-Fix 1: Model switching persistence
-The root cause is that llmProvider in the component is not being correctly serialized into the streaming request body on every call. Here is the corrected streamQueryRag call signature and the backend fix:
-In api.ts, the streamQueryRag function already accepts llmProvider as a parameter and passes it as llm_provider in the body. The bug is subtle — in LegalAssistant.tsx, the handleSubmit function calls streamQueryRag but the llmProvider variable is read at call time, which is correct. The actual failure is in generator.py generate_answer_stream():
-python# CURRENT (buggy) — silent fallback to Groq on any exception
-def generate_answer_stream(question, multi_result, history, image_context, provider_name, is_legal):
-    ...
-    if provider_name != "huggingface":
-        # Groq path
-    try:
-        answer = llm_provider.generate(messages, mode="finetuned")
-        # If this raises, nothing tells the frontend
-    except Exception as e:
-        yield f"Generation error: {str(e)}"  # This becomes a token, not an SSE error event
-The fix is to emit a typed SSE error event instead of yielding the error as a token, and to add a provider confirmation in the meta event:
-python# backend/rag/generator.py — fixed generate_answer_stream
+RETRIEVED LEGAL CONTEXT:
+{context}
 
-def generate_answer_stream(
-    question, multi_result, history=None,
-    image_context=None, provider_name="groq", is_legal=False
-) -> Generator[str, None, None]:
-    
-    if not multi_result.all_chunks:
-        yield "__NO_RESULTS__"
-        return
+QUESTION: {question}
 
-    is_legal = is_legal or (provider_name == "huggingface")
-    messages = _build_messages_rich(
-        question, multi_result, history,
-        image_context=image_context, is_legal=is_legal
-    )
-    
-    if provider_name != "huggingface":
-        # Groq — native streaming
-        try:
-            client = _get_groq_client()
-            stream = client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=messages,
-                stream=True,
-                timeout=GROQ_TIMEOUT,
-            )
-            for chunk_response in stream:
-                token = chunk_response.choices[0].delta.content
-                if token is not None:
-                    yield token
-        except Exception as e:
-            # Yield a sentinel the frontend can detect
-            yield f"\n\n[SYSTEM: Generation failed — {str(e)}]"
-        return
+REASONING (think step-by-step before answering):
+1. Identify the specific legal provision(s) directly relevant to this question.
+2. Note any amendments, exceptions, or qualifications to those provisions.
+3. If this is a judgment question, identify the ratio decidendi vs obiter dicta.
 
-    # Fine-tuned path — simulate streaming from synchronous output
-    try:
-        answer = llm_provider.generate(messages, mode="finetuned")
-        if not answer or not answer.strip():
-            yield "[SYSTEM: Fine-tuned model returned empty response. Check Kaggle bridge.]"
-            return
-        words = answer.split(" ")
-        import time
-        for i, word in enumerate(words):
-            yield word + (" " if i < len(words) - 1 else "")
-            time.sleep(0.012)  # slightly slower for readability
-    except Exception as e:
-        yield f"\n\n[SYSTEM: Fine-tuned model error — {str(e)}. Restart the Kaggle bridge.]"
-In query.py, add a provider confirmation to the meta SSE event:
-python# In event_stream(), after the meta yield:
-yield f"data: {json.dumps({'type': 'meta', 'chatId': chat_id, 'conversationId': conv_id, 'citations': citations_out, 'retrievedChunks': chunks_out, 'sourceCount': multi_result.source_count, 'activeProvider': req.llm_provider or 'groq'})}\n\n"
-In LegalAssistant.tsx, update onMeta to display the active provider:
-tsx(meta) => {
-  if (meta.retrievedChunks) capturedChunks = meta.retrievedChunks;
-  if (meta.conversationId) {
-    setActiveConvId(meta.conversationId);
-    (window as any).currentConversationId = meta.conversationId;
-  }
-  // Show which model is actually responding
-  if ((meta as any).activeProvider) {
-    setActiveModel((meta as any).activeProvider);
-  }
-},
+FINAL ANSWER:
+
+ANSWER:
+[Your clear, plain-language answer citing the exact legal basis]
+
+LEGAL BASIS:
+[Direct quote from the retrieved context — use exact statutory language]
+
+CITATIONS:
+1. [Document] | [Section/Para] | [Court if applicable] | [Date if applicable]
+
+AMENDMENTS & EXCEPTIONS:
+[Any amendments to cited sections, or 'None mentioned in context']"""
+The key change is the explicit REASONING chain-of-thought section. This forces the model to internally locate the ratio before generating the structured answer, which is exactly what produces the amendment history in your GT samples.

@@ -43,24 +43,61 @@ def _format_chunk_for_prompt(rank: int, chunk: RetrievedChunk) -> str:
         header += f" — {ref_detail}"
     return f"{header}\n{chunk.chunk_text}"
 
+LEGAL_PROMPT_TEMPLATE = """You are a Senior Legal Analyst trained on Indian law. 
+You have access to retrieved legal documents below.
+
+RETRIEVED LEGAL CONTEXT:
+{context}
+
+QUESTION: {question}
+
+REASONING (think step-by-step before answering):
+1. Identify the specific legal provision(s) directly relevant to this question.
+2. Note any amendments, exceptions, or qualifications to those provisions.
+3. If this is a judgment question, identify the ratio decidendi vs obiter dicta.
+
+FINAL ANSWER:
+
+ANSWER:
+[Your clear, plain-language answer citing the exact legal basis]
+
+LEGAL BASIS:
+[Direct quote from the retrieved context — use exact statutory language]
+
+CITATIONS:
+1. [Document] | [Section/Para] | [Court if applicable] | [Date if applicable]
+
+AMENDMENTS & EXCEPTIONS:
+[Any amendments to cited sections, or 'None mentioned in context']"""
+
 def build_single_source_prompt(question: str, result: MultiSourceResult, history: list[dict] | None, image_context: str | None = None, is_legal: bool = False) -> list[dict]:
+    context_parts = [_format_chunk_for_prompt(i, c) for i, c in enumerate(result.all_chunks, start=1)]
+    context_block = "\n\n".join(context_parts)
+
     if is_legal:
-        system_prompt = """You are a legal information assistant for Indian law. Answer using ONLY the provided context.
-        Structure: ANSWER, LEGAL BASIS (quote), CITATIONS (Document | Section/Para)."""
+        # Use the optimized legal template
+        content = LEGAL_PROMPT_TEMPLATE.format(context=context_block, question=question)
+        messages = [{"role": "system", "content": content}]
     else:
         system_prompt = """You are an expert research assistant. Answer accurately using ONLY the provided context.
         Cite every claim with [Source N] inline. Structure your answer with clear sections."""
+        messages = [{"role": "system", "content": f"{system_prompt}\n\n{image_context or ''}\n\nRETRIEVED CONTEXT:\n{context_block}"}]
 
-    context_parts = [_format_chunk_for_prompt(i, c) for i, c in enumerate(result.all_chunks, start=1)]
-    context_block = "\n\n".join(context_parts)
-    
-    messages = [{"role": "system", "content": f"{system_prompt}\n\n{image_context or ''}\n\nRETRIEVED CONTEXT:\n{context_block}"}]
     if history:
         valid_history = [m for m in history if m.get('role') in ('user', 'assistant') and m.get('content')]
         # If legal, keep history very short to save context space for long law books
         history_limit = 3 if is_legal else 12
         messages.extend(valid_history[-history_limit:])
-    messages.append({"role": "user", "content": question})
+    
+    if not is_legal:
+        messages.append({"role": "user", "content": question})
+    else:
+        # For the legal template, the question is already in the system message.
+        # But for LLM providers that require a user message, we might still need one.
+        # However, to avoid duplication in Alpaca, we might want to handle it in llm_provider.py
+        # For now, let's keep it consistent with the template's intent.
+        messages.append({"role": "user", "content": "Please provide the legal analysis based on the context above."})
+        
     return messages
 
 def build_comparison_prompt(question: str, result: MultiSourceResult, history: list[dict] | None, image_context: str | None = None, is_legal: bool = False) -> list[dict]:

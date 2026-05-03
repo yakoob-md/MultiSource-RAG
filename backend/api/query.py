@@ -254,7 +254,7 @@ def query(req: QueryRequest):
             multi_result, 
             history=augmented_history, 
             image_context=image_context_block, 
-            llm_provider=req.llm_provider,
+            provider_name=req.llm_provider,
             is_legal=is_legal
         )
     except Exception as e:
