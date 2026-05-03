@@ -2,48 +2,63 @@
 import requests
 import base64
 import time
-from backend.config import HF_API_KEY, HF_IMAGE_MODEL_ID, GROQ_TIMEOUT
+import os
+from groq import Groq
+from backend.config import GROQ_API_KEY, GROQ_TIMEOUT
+
+# We'll use the latest Llama 4 Scout Vision model for much better accuracy and to fix HF 404s
+VISION_MODEL_ID = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 def caption_image_blip(image_bytes: bytes) -> str:
     """
-    Generate a caption for an image using the Hugging Face Inference API
-    running the BLIP (Salesforce/blip-image-captioning-large) model.
+    Generate a high-fidelity caption/description for an image using Groq's Vision API.
+    Replaces the previous HF BLIP implementation which was prone to 404s and low quality.
     """
-    if not HF_API_KEY:
-        print("[Vision] HF_API_KEY is missing. Returning default message.")
-        return "Image uploaded but could not be captioned (Missing HF Key)."
+    if not GROQ_API_KEY:
+        print("[Vision] GROQ_API_KEY is missing. Returning default message.")
+        return "Image uploaded but could not be captioned (Missing Groq Key)."
 
-    api_url = f"https://api-inference.huggingface.co/models/{HF_IMAGE_MODEL_ID}"
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-
+    client = Groq(api_key=GROQ_API_KEY)
+    
     try:
-        print(f"[Vision] Requesting caption from HF for model {HF_IMAGE_MODEL_ID}...")
-        response = requests.post(
-            api_url, 
-            headers=headers, 
-            data=image_bytes, 
+        print(f"[Vision] Requesting high-res analysis from Groq using {VISION_MODEL_ID}...")
+        
+        # Convert bytes to base64 for Groq
+        b64_image = base64.b64encode(image_bytes).decode('utf-8')
+        
+        response = client.chat.completions.create(
+            model=VISION_MODEL_ID,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text", 
+                            "text": "Provide a very detailed, high-fidelity description of this image for a knowledge base. Describe objects, colors, text, and overall context accurately."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{b64_image}",
+                            },
+                        },
+                    ],
+                }
+            ],
+            max_tokens=300, # Allow for detailed descriptions
             timeout=GROQ_TIMEOUT
         )
         
-        if response.status_code == 200:
-            res_json = response.json()
-            if isinstance(res_json, list) and len(res_json) > 0 and "generated_text" in res_json[0]:
-                caption = res_json[0]["generated_text"].strip()
-                print(f"[Vision] Caption generated: {caption}")
-                return caption
-            return str(res_json)
-        elif response.status_code == 503:
-            # Model is loading
-            print("[Vision] HF model is loading (503). Retrying in 10s...")
-            time.sleep(10)
-            return caption_image_blip(image_bytes) # Simple recursive retry once
-        else:
-            print(f"[Vision] HF API Error {response.status_code}: {response.text}")
-            return f"Image uploaded (Caption error: {response.status_code})"
+        caption = response.choices[0].message.content.strip()
+        print(f"[Vision] Analysis completed: {caption[:100]}...")
+        return caption
             
     except Exception as e:
-        print(f"[Vision] Exception in captioning: {e}")
-        return f"Image uploaded (System error during captioning)"
+        print(f"[Vision] Exception in Groq Vision: {e}")
+        # Check if it's a decommissioned model or specific error
+        if "decommissioned" in str(e).lower():
+            return "Image analysis pending (Vision model update required)."
+        return f"Image uploaded (Analysis error: {str(e)})"
 
 def caption_image_blip_base64(b64_str: str) -> str:
     """Wrapper to handle base64 strings directly."""

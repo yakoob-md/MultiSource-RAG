@@ -11,20 +11,17 @@ env_path = BASE_DIR / "backend" / ".env"
 load_dotenv(dotenv_path=env_path)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-if not GROQ_API_KEY:
-    print("GROQ_API_KEY missing")
-    exit(1)
-
 client = Groq(api_key=GROQ_API_KEY)
 
-print("Testing Groq Vision...")
+# Use the latest model we found
+MODEL_ID = "meta-llama/llama-4-scout-17b-16e-instruct"
+
+print(f"Testing Groq Vision with {MODEL_ID}...")
 try:
-    # Use a tiny transparent 1x1 pixel image in base64
     tiny_image_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
     
     response = client.chat.completions.create(
-        model="llama-3.2-11b-vision-preview",
+        model=MODEL_ID,
         messages=[
             {
                 "role": "user",
