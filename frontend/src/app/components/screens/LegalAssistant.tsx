@@ -41,14 +41,19 @@ function useAutoResizeTextarea({ minHeight, maxHeight }: UseAutoResizeTextareaPr
   return { textareaRef, adjustHeight };
 }
 
-const Textarea = React.forwardRef<HTMLTextAreaElement, any>(
+interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  containerClassName?: string;
+  showRing?: boolean;
+}
+
+const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, containerClassName, showRing = true, ...props }, ref) => {
     const [isFocused, setIsFocused] = useState(false);
     return (
       <div className={cn("relative", containerClassName)}>
         <textarea
           className={cn(
-            "flex min-h-[60px] w-full rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3 text-sm transition-all duration-200 ease-in-out placeholder:text-white/20 text-white/90 focus-visible:outline-none focus-visible:ring-0",
+            "flex min-h-[60px] w-full rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3 text-sm transition-all duration-200 ease-in-out placeholder:text-white/20 text-white/90 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
             className
           )}
           ref={ref}
@@ -56,10 +61,20 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, any>(
           onBlur={() => setIsFocused(false)}
           {...props}
         />
+        {showRing && isFocused && (
+          <motion.span
+            className="absolute inset-0 rounded-xl pointer-events-none ring-2 ring-offset-0 ring-violet-500/20"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          />
+        )}
       </div>
     );
   }
 );
+Textarea.displayName = "Textarea";
 
 // ── Legal Citation Card ───────────────────────────────────────────────────────
 
@@ -108,6 +123,25 @@ export function LegalAssistant() {
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({ minHeight: 56, maxHeight: 200 });
   const navigate = useNavigate();
 
+  // ── Mention Tagging state ──
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [taggedSourceIds, setTaggedSourceIds] = useState<Set<string>>(new Set());
+
+  const filteredMentions = sources.filter(s => 
+    s.title.toLowerCase().includes(mentionQuery.toLowerCase())
+  );
+
+  const handleMentionSelect = (source: KnowledgeSource) => {
+    const words = question.split(' ');
+    words[words.length - 1] = `@${source.title} `;
+    setQuestion(words.join(' '));
+    setTaggedSourceIds(prev => new Set(prev).add(source.id));
+    setShowMentions(false);
+    textareaRef.current?.focus();
+  };
+
   useEffect(() => {
     fetchSources().then(setSources).catch(() => {});
     fetchConversations().then(setConversations).catch(() => {});
@@ -142,7 +176,11 @@ export function LegalAssistant() {
     const history = messages.slice(-6).map(m => ({ role: m.role, content: m.content }));
 
     try {
-      const sourceFilter = selectedSourceIds.size > 0 ? Array.from(selectedSourceIds) : undefined;
+      // Merge tagged sources with general source filter
+      const combinedSourceIds = new Set(selectedSourceIds);
+      taggedSourceIds.forEach(id => combinedSourceIds.add(id));
+      const sourceFilter = combinedSourceIds.size > 0 ? Array.from(combinedSourceIds) : undefined;
+      
       let fullAnswer = '';
       let capturedChunks: RetrievedChunk[] = [];
 
@@ -180,6 +218,7 @@ export function LegalAssistant() {
 
       setMessages(prev => [...prev, aiMsg]);
       setStreamingAnswer('');
+      setTaggedSourceIds(new Set()); // Reset tags
       fetchConversations().then(setConversations);
     } catch (err: any) {
       setError(err.message || "Legal search failed");
@@ -299,13 +338,78 @@ export function LegalAssistant() {
       <div className="px-6 pb-8 pt-4 relative z-20">
         <div className="max-w-4xl mx-auto">
           <div className="relative group">
+            {/* Mention Suggestions */}
+            <AnimatePresence>
+              {showMentions && filteredMentions.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="absolute bottom-full mb-2 left-0 w-64 bg-[#111114] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-[100]"
+                >
+                  <div className="p-2 border-b border-white/5 bg-white/5">
+                    <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest px-2 py-1">Tag Legal Source</p>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {filteredMentions.map((s, idx) => (
+                      <button
+                        key={s.id}
+                        onClick={() => handleMentionSelect(s)}
+                        className={cn(
+                          "w-full px-4 py-2 text-left text-xs transition-colors hover:bg-[#6366F1]/20 flex items-center gap-2",
+                          idx === mentionIndex ? "bg-[#6366F1]/10" : ""
+                        )}
+                      >
+                        <FileText className="w-3 h-3 text-white/40" />
+                        <span className="truncate">{s.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <div className="backdrop-blur-2xl bg-white/[0.02] rounded-2xl border border-white/5 shadow-2xl transition-all focus-within:border-[#6366F1]/30">
               <div className="p-2 pt-4">
                 <Textarea 
                   ref={textareaRef}
                   value={question}
-                  onChange={(e: any) => { setQuestion(e.target.value); adjustHeight(); }}
-                  onKeyDown={(e: any) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
+                  onChange={(e: any) => { 
+                    const val = e.target.value;
+                    setQuestion(val); 
+                    adjustHeight(); 
+                    
+                    const lastWord = val.split(' ').pop() || '';
+                    if (lastWord.startsWith('@')) {
+                      setMentionQuery(lastWord.slice(1));
+                      setShowMentions(true);
+                      setMentionIndex(0);
+                    } else {
+                      setShowMentions(false);
+                    }
+                  }}
+                  onKeyDown={(e: any) => { 
+                    if (showMentions && filteredMentions.length > 0) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setMentionIndex(prev => (prev + 1) % filteredMentions.length);
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setMentionIndex(prev => (prev - 1 + filteredMentions.length) % filteredMentions.length);
+                      } else if (e.key === 'Enter' || e.key === 'Tab') {
+                        e.preventDefault();
+                        handleMentionSelect(filteredMentions[mentionIndex]);
+                      } else if (e.key === 'Escape') {
+                        setShowMentions(false);
+                      }
+                      return;
+                    }
+
+                    if(e.key === 'Enter' && !e.shiftKey) { 
+                      e.preventDefault(); 
+                      handleSubmit(); 
+                    } 
+                  }}
                   placeholder="Query Indian Laws, SC Judgments, or Constitutional Articles..."
                   className="min-h-[56px] border-none bg-transparent focus:ring-0"
                 />

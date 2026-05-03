@@ -260,6 +260,16 @@ export function AskAI() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({ minHeight: 56, maxHeight: 200 });
+  
+  // ── Mention Tagging state ──
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [taggedSourceIds, setTaggedSourceIds] = useState<Set<string>>(new Set());
+
+  const filteredMentions = sources.filter(s => 
+    s.title.toLowerCase().includes(mentionQuery.toLowerCase())
+  );
 
   const toggleSourceSelection = useCallback((sourceId: string) => {
     setSelectedSourceIds(prev => {
@@ -404,6 +414,15 @@ export function AskAI() {
 
   const dismissUploadedFile = () => setUploadedFile(null);
 
+  const handleMentionSelect = (source: KnowledgeSource) => {
+    const words = question.split(' ');
+    words[words.length - 1] = `@${source.title} `;
+    setQuestion(words.join(' '));
+    setTaggedSourceIds(prev => new Set(prev).add(source.id));
+    setShowMentions(false);
+    textareaRef.current?.focus();
+  };
+
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!question.trim() || isThinking || isStreaming) return;
@@ -432,7 +451,11 @@ export function AskAI() {
     }));
 
     try {
-      const sourceFilter = selectedSourceIds.size > 0 ? Array.from(selectedSourceIds) : undefined;
+      // Merge tagged sources with general source filter
+      const combinedSourceIds = new Set(selectedSourceIds);
+      taggedSourceIds.forEach(id => combinedSourceIds.add(id));
+      
+      const sourceFilter = combinedSourceIds.size > 0 ? Array.from(combinedSourceIds) : undefined;
       let fullAnswer = '';
       let capturedChunks: RetrievedChunk[] = [];
 
@@ -463,6 +486,7 @@ export function AskAI() {
       );
 
       removeImage();
+      setTaggedSourceIds(new Set()); // Reset tags after query
 
       const aiMsg: ChatMessage = {
         id: `msg-${Date.now() + 1}`,
@@ -681,6 +705,37 @@ export function AskAI() {
               )}
             </AnimatePresence>
 
+            {/* Mention Suggestions */}
+            <AnimatePresence>
+              {showMentions && filteredMentions.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="absolute bottom-full mb-2 left-0 w-64 bg-[#111114] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-[100]"
+                >
+                  <div className="p-2 border-b border-white/5 bg-white/5">
+                    <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest px-2 py-1">Tag a Source</p>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {filteredMentions.map((s, idx) => (
+                      <button
+                        key={s.id}
+                        onClick={() => handleMentionSelect(s)}
+                        className={cn(
+                          "w-full px-4 py-2 text-left text-xs transition-colors hover:bg-[#6366F1]/20 flex items-center gap-2",
+                          idx === mentionIndex ? "bg-[#6366F1]/10" : ""
+                        )}
+                      >
+                        <FileText className="w-3 h-3 text-white/40" />
+                        <span className="truncate">{s.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <div className={cn(
               "backdrop-blur-2xl bg-white/[0.02] rounded-2xl border border-white/5 shadow-2xl transition-all",
               "focus-within:border-white/10 focus-within:bg-white/[0.04]"
@@ -690,10 +745,37 @@ export function AskAI() {
                   ref={textareaRef}
                   value={question}
                   onChange={(e) => {
-                    setQuestion(e.target.value);
+                    const val = e.target.value;
+                    setQuestion(val);
                     adjustHeight();
+
+                    // Detect @ mention
+                    const lastWord = val.split(' ').pop() || '';
+                    if (lastWord.startsWith('@')) {
+                      setMentionQuery(lastWord.slice(1));
+                      setShowMentions(true);
+                      setMentionIndex(0);
+                    } else {
+                      setShowMentions(false);
+                    }
                   }}
                   onKeyDown={(e) => {
+                    if (showMentions && filteredMentions.length > 0) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setMentionIndex(prev => (prev + 1) % filteredMentions.length);
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setMentionIndex(prev => (prev - 1 + filteredMentions.length) % filteredMentions.length);
+                      } else if (e.key === 'Enter' || e.key === 'Tab') {
+                        e.preventDefault();
+                        handleMentionSelect(filteredMentions[mentionIndex]);
+                      } else if (e.key === 'Escape') {
+                        setShowMentions(false);
+                      }
+                      return;
+                    }
+
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
                       handleSubmit();
