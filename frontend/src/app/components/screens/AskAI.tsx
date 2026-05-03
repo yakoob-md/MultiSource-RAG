@@ -4,7 +4,7 @@ import {
   Plus, MessageSquare, Trash2, X,
   ChevronLeft, Paperclip, Image as ImageIcon,
   Database, Upload, Link as LinkIcon, Send as SendIcon, X as XIcon, Sparkles, Clock, Lock, History,
-  Search, Zap
+  Search, Zap, Gavel
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router';
@@ -130,6 +130,17 @@ function TypingDots() {
   );
 }
 
+const sourceIcon = (type: string) => {
+  switch (type) {
+    case 'pdf': return FileText;
+    case 'web':
+    case 'url': return Globe;
+    case 'youtube': return Youtube;
+    case 'image': return ImageIcon;
+    default: return FileText;
+  }
+};
+
 // ── Citation Tooltip (Wikipedia-style hover preview) ─────────────────────────
 
 interface CitationTooltipProps {
@@ -212,13 +223,13 @@ function CitationTooltip({ chunk, index }: CitationTooltipProps) {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export function AskAI() {
+  const navigate = useNavigate();
   // ── Conversation state ────────────────────────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
-  const navigate = useNavigate();
 
   const navigateTo = (path: string) => navigate(path);
 
@@ -268,6 +279,7 @@ export function AskAI() {
   const [taggedSourceIds, setTaggedSourceIds] = useState<Set<string>>(new Set());
 
   const filteredMentions = sources.filter(s => 
+    selectedSourceIds.has(s.id) &&
     s.title.toLowerCase().includes(mentionQuery.toLowerCase())
   );
 
@@ -280,63 +292,6 @@ export function AskAI() {
     });
   }, []);
 
-  const handleOpenSources = () => setIsKbOpen(true);
-  const handleOpenHistory = () => setSidebarOpen(true);
-  const handleNewChat = useCallback(() => {
-    setActiveConvId(null);
-    (window as any).currentConversationId = null;
-    setMessages([]);
-    setSelectedChunks([]);
-    setQuestion('');
-    setSelectedSourceIds(new Set());
-  }, []);
-
-  const loadConversation = useCallback(async (convId: string) => {
-    setActiveConvId(convId);
-    (window as any).currentConversationId = convId;
-    setMessages([]);
-    setSelectedChunks([]);
-    setError(null);
-    setSidebarOpen(false); // Auto-close sidebar after selection
-    try {
-      const data = await fetchConversationMessages(convId);
-      const rebuilt: ChatMessage[] = [];
-      for (const m of data.messages) {
-        rebuilt.push({
-          id: `user-${m.id}`,
-          role: 'user',
-          content: m.question,
-          timestamp: new Date(m.createdAt),
-        });
-        // Build readable chunk refs from sourcesUsed IDs
-        const chunkRefs: RetrievedChunk[] = m.sourcesUsed
-          ? m.sourcesUsed.map((sid: string) => {
-            // Try to resolve source title from loaded sources list
-            const found = sources.find(s => s.id === sid);
-            return {
-              id: sid,
-              sourceId: sid,
-              sourceName: found?.title || 'Source',
-              sourceType: (found?.type as any) || 'pdf',
-              text: '',
-              similarityScore: 1,
-              language: 'EN' as const
-            };
-          })
-          : [];
-        rebuilt.push({
-          id: `ai-${m.id}`,
-          role: 'assistant',
-          content: m.answer,
-          timestamp: new Date(m.createdAt),
-          retrievedChunks: chunkRefs,
-        });
-      }
-      setMessages(rebuilt);
-    } catch {
-      setError('Failed to load conversation');
-    }
-  }, [sources]);
 
   // ── Effects ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -347,6 +302,64 @@ export function AskAI() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingAnswer]);
+  const handleNewChat = useCallback(() => {
+    setActiveConvId(null);
+    setMessages([]);
+    setQuestion('');
+    setStreamingAnswer('');
+    setError(null);
+    setActiveImageId(null);
+    setImagePreviewUrl(null);
+    (window as any).currentConversationId = null;
+    navigate('/app/ask');
+  }, [navigate]);
+
+  const loadConversation = useCallback(async (id: string) => {
+    setActiveConvId(id);
+    (window as any).currentConversationId = id;
+    setMessages([]);
+    setError(null);
+    setSidebarOpen(false);
+    try {
+      const data = await fetchConversationMessages(id);
+      const rebuilt: ChatMessage[] = [];
+      for (const m of data.messages) {
+        rebuilt.push({
+          id: `u-${m.id}`,
+          role: 'user',
+          content: m.question,
+          timestamp: new Date(m.createdAt),
+        });
+        
+        // Rebuild citation/chunk structure from stored sourcesUsed
+        const chunkRefs: RetrievedChunk[] = m.sourcesUsed
+          ? m.sourcesUsed.map((sid: string) => ({
+            id: sid,
+            sourceId: sid,
+            sourceName: 'Source', // Placeholder until hydrated
+            sourceType: 'pdf',
+            text: '',
+            similarityScore: 1,
+            language: 'EN'
+          }))
+          : [];
+
+        rebuilt.push({
+          id: `a-${m.id}`,
+          role: 'assistant',
+          content: m.answer,
+          timestamp: new Date(m.createdAt),
+          retrievedChunks: chunkRefs,
+        });
+      }
+      setMessages(rebuilt);
+    } catch {
+      setError("Failed to load conversation");
+    }
+  }, []);
+
+  const handleOpenSources = useCallback(() => setIsKbOpen(true), []);
+  const handleOpenHistory = useCallback(() => setSidebarOpen(true), []);
 
   useEffect(() => {
     const handleLoadConv = (e: any) => {
@@ -366,7 +379,7 @@ export function AskAI() {
       window.removeEventListener('open-history', handleOpenHistory);
       window.removeEventListener('new-chat', handleNewChat);
     };
-  }, [loadConversation, handleNewChat]);
+  }, [loadConversation, handleNewChat, handleOpenSources, handleOpenHistory]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -513,13 +526,6 @@ export function AskAI() {
     }
   };
 
-  const sourceIcon = (type: string) => {
-    if (type === 'pdf') return FileText;
-    if (type === 'web') return Globe;
-    if (type === 'youtube') return Youtube;
-    if (type === 'image') return ImageIcon;
-    return FileText;
-  };
 
   const isInitial = messages.length === 0 && !isStreaming && !isThinking;
 
@@ -829,7 +835,8 @@ export function AskAI() {
                       onChange={(e) => setLlmProvider(e.target.value)}
                       className="bg-transparent border-none text-[10px] font-bold uppercase tracking-widest text-white/40 focus:outline-none cursor-pointer group-hover:text-white transition-colors"
                     >
-                      <option value="groq" className="bg-[#0A0A0B]">General Intelligence</option>
+                      <option value="groq" className="bg-[#0A0A0B]">General Intelligence (Groq)</option>
+                      <option value="huggingface" className="bg-[#0A0A0B]">Legal Intelligence (Fine-tuned)</option>
                     </select>
                   </div>
                 </div>
@@ -1090,9 +1097,16 @@ export function AskAI() {
                   </div>
                 ) : (
                   conversations.map(conv => (
-                    <button
-                      key={conv.id}
-                      onClick={() => { loadConversation(conv.id); setSidebarOpen(false); }}
+                      <button
+                        key={conv.id}
+                        onClick={() => {
+                          if (conv.conv_type === 'legal') {
+                            navigate(`/app/legal?id=${conv.id}`);
+                          } else {
+                            loadConversation(conv.id);
+                          }
+                          setSidebarOpen(false);
+                        }}
                       className={cn(
                         "w-full flex items-center gap-4 p-4 rounded-2xl transition-all border text-left group relative",
                         activeConvId === conv.id
@@ -1101,13 +1115,22 @@ export function AskAI() {
                       )}
                     >
                       <div className={cn(
-                        "w-2 h-2 rounded-full",
-                        activeConvId === conv.id ? "bg-[#6366F1]" : "bg-white/10"
-                      )} />
+                        "w-8 h-8 rounded-lg flex items-center justify-center border transition-colors",
+                        activeConvId === conv.id 
+                          ? "bg-[#6366F1]/20 border-[#6366F1]/40 text-[#6366F1]" 
+                          : "bg-white/5 border-white/10 text-white/20 group-hover:text-white/60"
+                      )}>
+                        {conv.conv_type === 'legal' ? (
+                          <Gavel className="w-4 h-4" />
+                        ) : (
+                          <MessageSquare className="w-4 h-4" />
+                        )}
+                      </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-bold truncate group-hover:text-white transition-colors">{conv.title}</p>
                         <p className="text-[9px] font-medium text-white/20 uppercase tracking-tighter mt-0.5">
-                          Last active: {new Date(conv.updated_at).toLocaleDateString()}
+                          {conv.conv_type === 'legal' ? 'Legal Case' : 'General Intelligence'}
+                          {conv.updated_at && ` · ${new Date(conv.updated_at).toLocaleDateString()}`}
                         </p>
                       </div>
                     </button>

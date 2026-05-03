@@ -30,6 +30,7 @@ export interface QueryResponse {
 export interface Conversation {
   id: string;
   title: string;
+  conv_type?: 'general' | 'legal';
   created_at: string;
   updated_at: string;
   message_count: number;

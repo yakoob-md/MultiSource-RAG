@@ -76,6 +76,17 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
 );
 Textarea.displayName = "Textarea";
 
+const sourceIcon = (type: string) => {
+  switch (type) {
+    case 'pdf': return FileText;
+    case 'web':
+    case 'url': return Globe;
+    case 'youtube': return Youtube;
+    case 'image': return ImageIcon;
+    default: return FileText;
+  }
+};
+
 // ── Legal Citation Card ───────────────────────────────────────────────────────
 
 function LegalCitationCard({ chunk, index }: { chunk: RetrievedChunk; index: number }) {
@@ -103,6 +114,7 @@ function LegalCitationCard({ chunk, index }: { chunk: RetrievedChunk; index: num
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export function LegalAssistant() {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [question, setQuestion] = useState('');
   const [isThinking, setIsThinking] = useState(false);
@@ -116,12 +128,12 @@ export function LegalAssistant() {
   const [legalFilter, setLegalFilter] = useState<string | null>(null);
 
   const [isKbOpen, setIsKbOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({ minHeight: 56, maxHeight: 200 });
-  const navigate = useNavigate();
 
   // ── Mention Tagging state ──
   const [mentionQuery, setMentionQuery] = useState('');
@@ -130,6 +142,7 @@ export function LegalAssistant() {
   const [taggedSourceIds, setTaggedSourceIds] = useState<Set<string>>(new Set());
 
   const filteredMentions = sources.filter(s => 
+    selectedSourceIds.has(s.id) &&
     s.title.toLowerCase().includes(mentionQuery.toLowerCase())
   );
 
@@ -141,11 +154,99 @@ export function LegalAssistant() {
     setShowMentions(false);
     textareaRef.current?.focus();
   };
+  const handleNewChat = useCallback(() => {
+    setMessages([]);
+    setQuestion('');
+    setStreamingAnswer('');
+    setError(null);
+    setActiveConvId(null);
+    (window as any).currentConversationId = null;
+    navigate('/app/legal');
+  }, [navigate]);
+
+  const handleOpenSources = useCallback(() => setIsKbOpen(true), []);
+  const handleOpenHistory = useCallback(() => setSidebarOpen(true), []);
+
+  const loadConversation = useCallback(async (convId: string) => {
+    setActiveConvId(convId);
+    (window as any).currentConversationId = convId;
+    setMessages([]);
+    setError(null);
+    setSidebarOpen(false);
+    try {
+      const data = await fetchConversationMessages(convId);
+      const rebuilt: ChatMessage[] = [];
+      for (const m of data.messages) {
+        rebuilt.push({
+          id: `user-${m.id}`,
+          role: 'user',
+          content: m.question,
+          timestamp: new Date(m.createdAt),
+        });
+        
+        // Build readability-enhanced chunks for legal display
+        const chunkRefs: RetrievedChunk[] = m.sourcesUsed
+          ? m.sourcesUsed.map((sid: string) => {
+            const found = sources.find(s => s.id === sid);
+            return {
+              id: sid,
+              sourceId: sid,
+              sourceName: found?.title || 'Legal Source',
+              sourceType: (found?.type as any) || 'pdf',
+              text: '',
+              similarityScore: 1,
+              language: 'EN' as const
+            };
+          })
+          : [];
+
+        rebuilt.push({
+          id: `ai-${m.id}`,
+          role: 'assistant',
+          content: m.answer,
+          timestamp: new Date(m.createdAt),
+          retrievedChunks: chunkRefs,
+        });
+      }
+      setMessages(rebuilt);
+    } catch {
+      setError('Failed to load legal conversation');
+    }
+  }, [sources]);
 
   useEffect(() => {
     fetchSources().then(setSources).catch(() => {});
     fetchConversations().then(setConversations).catch(() => {});
+    
+    // Check for ID in URL
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    if (id) {
+      loadConversation(id);
+      // Clean URL after loading
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
+
+  useEffect(() => {
+    const handleLoadConv = (e: any) => {
+      if (e.detail?.id) loadConversation(e.detail.id);
+    };
+    const handleNewChatEv = () => handleNewChat();
+    const handleOpenHistEv = () => handleOpenHistory();
+    const handleOpenSourcesEv = () => handleOpenSources();
+    
+    window.addEventListener('load-conversation', handleLoadConv);
+    window.addEventListener('new-chat', handleNewChatEv);
+    window.addEventListener('open-history', handleOpenHistEv);
+    window.addEventListener('open-sources', handleOpenSourcesEv);
+    return () => {
+      window.removeEventListener('load-conversation', handleLoadConv);
+      window.removeEventListener('new-chat', handleNewChatEv);
+      window.removeEventListener('open-history', handleOpenHistEv);
+      window.removeEventListener('open-sources', handleOpenSourcesEv);
+    };
+  }, [loadConversation, handleNewChat, handleOpenHistory, handleOpenSources]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -251,6 +352,11 @@ export function LegalAssistant() {
         </div>
 
         <div className="flex items-center gap-3">
+          <button onClick={() => setSidebarOpen(true)} className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-white transition-all flex items-center gap-2">
+             <History className="w-4 h-4" />
+             <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">History</span>
+          </button>
+
           <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10">
              <Scale className="w-4 h-4 text-[#6366F1]" />
              <select 
@@ -426,6 +532,24 @@ export function LegalAssistant() {
                    
                    <div className="h-4 w-px bg-white/5 mx-2" />
                    
+                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-[#6366F1]/30 transition-all group">
+                    {llmProvider === 'huggingface' ? (
+                      <Scale className="w-3.5 h-3.5 text-[#6366F1]" />
+                    ) : (
+                      <Zap className="w-3.5 h-3.5 text-[#6366F1]" />
+                    )}
+                    <select
+                      value={llmProvider}
+                      onChange={(e) => setLlmProvider(e.target.value)}
+                      className="bg-transparent border-none text-[10px] font-bold uppercase tracking-widest text-white/40 focus:outline-none cursor-pointer group-hover:text-white transition-colors"
+                    >
+                      <option value="huggingface" className="bg-[#0A0A0B]">Legal Model (Fine-tuned)</option>
+                      <option value="groq" className="bg-[#0A0A0B]">General Model (Groq)</option>
+                    </select>
+                  </div>
+                   
+                   <div className="h-4 w-px bg-white/5 mx-2" />
+                   
                    <div className="flex items-center gap-3">
                       {['statute', 'judgment'].map(f => (
                         <button 
@@ -495,6 +619,103 @@ export function LegalAssistant() {
                <button onClick={() => setIsKbOpen(false)} className="w-full py-4 bg-[#6366F1] text-white rounded-2xl font-bold uppercase tracking-widest text-xs">Confirm Selection</button>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+      {/* History Sidebar Overlay */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSidebarOpen(false)}
+              className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ x: -320 }}
+              animate={{ x: 0 }}
+              exit={{ x: -320 }}
+              className="fixed top-0 left-0 bottom-0 w-85 z-[101] bg-[#0A0A0B]/95 backdrop-blur-2xl border-r border-white/10 p-8 flex flex-col shadow-2xl overflow-hidden"
+            >
+              {/* Beams Background for Sidebar */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40">
+                <div className="absolute -top-[10%] -right-[20%] w-[80%] h-[40%] rounded-full bg-[#6366F1]/10 blur-[80px]" />
+                <div className="absolute bottom-[20%] -left-[20%] w-[60%] h-[50%] rounded-full bg-violet-500/5 blur-[90px]" />
+              </div>
+
+              <div className="flex items-center justify-between mb-10 relative z-10">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center">
+                    <History className="w-5 h-5 text-[#6366F1]" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold tracking-tight">Intelligence</h2>
+                    <p className="text-[9px] text-white/20 font-bold uppercase tracking-[0.2em]">Conversation History</p>
+                  </div>
+                </div>
+                <button onClick={() => setSidebarOpen(false)} className="p-2 hover:bg-white/5 rounded-xl text-white/20 hover:text-white transition-all">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <button
+                onClick={() => { handleNewChat(); setSidebarOpen(false); }}
+                className="w-full py-3 px-4 mb-8 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-2xl flex items-center justify-center gap-3 transition-all shadow-lg shadow-[#6366F1]/20 group relative z-10"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="text-[11px] font-bold uppercase tracking-widest">New Legal Session</span>
+              </button>
+
+              <div className="flex-1 overflow-y-auto space-y-3 no-scrollbar pr-2">
+                {conversations.length === 0 ? (
+                  <div className="py-10 text-center space-y-2">
+                    <p className="text-white/20 text-xs font-bold uppercase tracking-widest">No cases yet</p>
+                  </div>
+                ) : (
+                  conversations.map(conv => (
+                    <button
+                      key={conv.id}
+                      onClick={() => {
+                        if (conv.conv_type === 'general' || !conv.conv_type) {
+                          navigate(`/app/ask?id=${conv.id}`);
+                        } else {
+                          loadConversation(conv.id);
+                        }
+                        setSidebarOpen(false);
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-4 p-4 rounded-2xl transition-all border text-left group relative",
+                        activeConvId === conv.id
+                          ? "bg-[#6366F1]/10 border-[#6366F1]/30 text-white"
+                          : "bg-white/[0.02] border-white/5 text-white/40 hover:bg-white/[0.04] hover:border-white/10"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center border transition-colors",
+                        activeConvId === conv.id 
+                          ? "bg-[#6366F1]/20 border-[#6366F1]/40 text-[#6366F1]" 
+                          : "bg-white/5 border-white/10 text-white/20 group-hover:text-white/60"
+                      )}>
+                        {conv.conv_type === 'legal' ? (
+                          <Gavel className="w-4 h-4" />
+                        ) : (
+                          <MessageSquare className="w-4 h-4" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold truncate group-hover:text-white transition-colors">{conv.title}</p>
+                        <p className="text-[9px] font-medium text-white/20 uppercase tracking-tighter mt-0.5">
+                          {conv.conv_type === 'legal' ? 'Legal Case' : 'General Intelligence'}
+                          {conv.updated_at && ` · ${new Date(conv.updated_at).toLocaleDateString()}`}
+                        </p>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </div>

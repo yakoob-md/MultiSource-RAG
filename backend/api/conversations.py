@@ -10,6 +10,7 @@ router = APIRouter()
 
 class CreateConversationRequest(BaseModel):
     title: str = "New Chat"
+    conv_type: str = "general"
 
 
 class RenameRequest(BaseModel):
@@ -23,11 +24,11 @@ def create_conversation(req: CreateConversationRequest):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO conversations (id, title) VALUES (%s, %s)",
-            (conv_id, req.title)
+            "INSERT INTO conversations (id, title, conv_type) VALUES (%s, %s, %s)",
+            (conv_id, req.title, req.conv_type)
         )
         conn.commit()
-    return {"id": conv_id, "title": req.title}
+    return {"id": conv_id, "title": req.title, "conv_type": req.conv_type}
 
 
 @router.get("/conversations")
@@ -36,7 +37,7 @@ def list_conversations():
     with get_connection() as conn:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
-            SELECT c.id, c.title, c.created_at, c.updated_at,
+            SELECT c.id, c.title, c.conv_type, c.created_at, c.updated_at,
                    COUNT(h.id) AS message_count
             FROM conversations c
             LEFT JOIN chat_history h ON h.conversation_id = c.id

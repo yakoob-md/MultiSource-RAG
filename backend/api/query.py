@@ -126,12 +126,15 @@ def _do_retrieve(question: str, req_source_ids: list[str] | None, analysis: Quer
         return multi_retrieve(question, analysis)
 
 
-def _ensure_conversation(cursor, conv_id: str | None, question: str) -> str:
+def _ensure_conversation(cursor, conv_id: str | None, question: str, conv_type: str = "general") -> str:
     if conv_id:
         return conv_id
     new_id = str(uuid.uuid4())
     title = question[:60] + ("..." if len(question) > 60 else "")
-    cursor.execute("INSERT INTO conversations (id, title) VALUES (%s, %s)", (new_id, title))
+    cursor.execute(
+        "INSERT INTO conversations (id, title, conv_type) VALUES (%s, %s, %s)", 
+        (new_id, title, conv_type)
+    )
     return new_id
 
 
@@ -150,14 +153,14 @@ def _save_to_db(chat_id: str, conv_id: str, question: str, answer: str, source_i
         print(f"[Query] DB save warning: {e}")
 
 
-def _pre_create_conv(conv_id: str | None, question: str) -> str:
+def _pre_create_conv(conv_id: str | None, question: str, conv_type: str = "general") -> str:
     """Pre-create a conversation row before streaming starts so meta event can carry real ID."""
     if conv_id:
         return conv_id
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
-            new_id = _ensure_conversation(cursor, None, question)
+            new_id = _ensure_conversation(cursor, None, question, conv_type)
             conn.commit()
             return new_id
     except Exception as e:
@@ -265,7 +268,8 @@ def query(req: QueryRequest):
         try:
             with get_connection() as conn:
                 cursor = conn.cursor()
-                conv_id = _ensure_conversation(cursor, None, req.question)
+                conv_type = "legal" if is_legal else "general"
+                conv_id = _ensure_conversation(cursor, None, req.question, conv_type)
                 conn.commit()
         except Exception as e:
             print(f"[Query] Conv create warning: {e}")
@@ -326,7 +330,9 @@ def query_stream(req: QueryRequest):
 
     # 3. Pre-create conversation so meta event has a real conv_id
     chat_id = str(uuid.uuid4())
-    conv_id = _pre_create_conv(req.conversation_id, req.question)
+    is_legal = req.is_legal_mode or (req.llm_provider == "huggingface")
+    conv_type = "legal" if is_legal else "general"
+    conv_id = _pre_create_conv(req.conversation_id, req.question, conv_type)
 
     # 4. Build meta payload (sent immediately before first token)
     citations_out = _format_citations_out(_build_citations(chunks))
