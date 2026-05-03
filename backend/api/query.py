@@ -222,9 +222,12 @@ def query(req: QueryRequest):
             img_chunk = fetch_image_chunk(req.image_id)
             if img_chunk:
                 chunks = [img_chunk] + chunks
-                # Also update multi_result if possible (though chunks is used below)
                 multi_result.all_chunks = chunks
-                print(f"[Query] Injected image chunk for {req.image_id}")
+                # Ensure it appears in comparison/synthesis source groups too
+                if img_chunk.source_title not in multi_result.source_groups:
+                    multi_result.source_groups[img_chunk.source_title] = [img_chunk]
+                    multi_result.source_count = len(multi_result.source_groups)
+                print(f"[Query] Injected image chunk and group for {req.image_id}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
 
@@ -302,7 +305,11 @@ def query_stream(req: QueryRequest):
             if img_chunk:
                 # Prepend so it has high priority in context
                 chunks = [img_chunk] + chunks
-                print(f"[QueryStream] Injected image chunk for {req.image_id}")
+                # Ensure it's in the source_groups so comparison/synthesis prompts include it
+                if img_chunk.source_title not in multi_result.source_groups:
+                    multi_result.source_groups[img_chunk.source_title] = [img_chunk]
+                    multi_result.source_count = len(multi_result.source_groups)
+                print(f"[QueryStream] Injected image chunk and group for {req.image_id}")
         
         print(f"[QueryStream] Retrieved {len(chunks)} chunks from {multi_result.source_count} sources")
     except Exception as e:

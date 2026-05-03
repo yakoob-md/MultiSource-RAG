@@ -250,6 +250,14 @@ export function AskAI() {
   const [uploadedFile, setUploadedFile] = useState<{ name: string, type: 'pdf' | 'image' } | null>(null);
   const sourceFileInputRef = useRef<HTMLInputElement>(null);
 
+  // ── Unified Ingestion & Selection Preview ──
+  const [isIngestionModalOpen, setIsIngestionModalOpen] = useState(false);
+  const [isSelectedPreviewOpen, setIsSelectedPreviewOpen] = useState(false);
+  const [ingestionMode, setIngestionMode] = useState<'options' | 'url' | 'youtube'>('options');
+  const [urlInput, setUrlInput] = useState('');
+  const [youtubeInput, setYoutubeInput] = useState('');
+  const [isProcessingExternal, setIsProcessingExternal] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({ minHeight: 56, maxHeight: 200 });
 
@@ -698,31 +706,33 @@ export function AskAI() {
               </div>
 
               <div className="p-3 border-t border-white/5 flex items-center justify-between">
-                <div className="flex items-center gap-1">
-                  {selectedSourceIds.size > 0 && (
-                    <div className="mr-2 flex items-center gap-2 px-2 py-1 rounded-lg bg-[#6366F1]/10 border border-[#6366F1]/20">
-                      <Database className="w-3 h-3 text-[#6366F1]" />
-                      <span className="text-[9px] font-bold text-[#6366F1] uppercase">{selectedSourceIds.size} Selected</span>
-                      <button onClick={() => setSelectedSourceIds(new Set())} className="hover:text-white text-[#6366F1]/60"><X className="w-2 h-2" /></button>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => sourceFileInputRef.current?.click()}
-                    disabled={isUploadingSource}
-                    className="p-2 text-white/20 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50"
-                    title="Upload PDF or Image"
-                  >
-                    {isUploadingSource ? (
-                      <Loader2 className="w-4 h-4 animate-spin text-[#6366F1]" />
-                    ) : (
-                      <Paperclip className="w-4 h-4" />
+                  <div className="flex items-center gap-1">
+                    {selectedSourceIds.size > 0 && (
+                      <button
+                        onClick={() => setIsSelectedPreviewOpen(true)}
+                        className="mr-2 flex items-center gap-2 px-2 py-1 rounded-lg bg-[#6366F1]/10 border border-[#6366F1]/20 hover:bg-[#6366F1]/20 transition-all"
+                      >
+                        <Database className="w-3 h-3 text-[#6366F1]" />
+                        <span className="text-[9px] font-bold text-[#6366F1] uppercase">{selectedSourceIds.size} Selected</span>
+                      </button>
                     )}
-                    <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">
-                      {isUploadingSource ? 'Uploading...' : 'Attach'}
-                    </span>
-                  </button>
-                  <input type="file" ref={sourceFileInputRef} onChange={handleFileChange} accept="image/*,application/pdf" className="hidden" />
+                    <button
+                      type="button"
+                      onClick={() => setIsIngestionModalOpen(true)}
+                      disabled={isUploadingSource || isProcessingExternal}
+                      className="p-2 text-white/20 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50"
+                      title="Add Knowledge Source"
+                    >
+                      {isUploadingSource || isProcessingExternal ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-[#6366F1]" />
+                      ) : (
+                        <Plus className="w-4 h-4" />
+                      )}
+                      <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">
+                        {isUploadingSource || isProcessingExternal ? 'Processing...' : 'Source'}
+                      </span>
+                    </button>
+                    <input type="file" ref={sourceFileInputRef} onChange={handleFileChange} accept="image/*,application/pdf" className="hidden" />
 
                   <div className="h-4 w-px bg-white/5 mx-2" />
 
@@ -830,7 +840,7 @@ export function AskAI() {
                       <p className="text-[10px] text-white/20 font-medium">Visual representation of your knowledge base composition</p>
                     </div>
                     <button
-                      onClick={() => sourceFileInputRef.current?.click()}
+                      onClick={() => setIsIngestionModalOpen(true)}
                       className="px-6 py-2 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-[#6366F1]/20"
                     >
                       Upload New Source
@@ -1034,6 +1044,210 @@ export function AskAI() {
               </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* Unified Ingestion Modal */}
+      <AnimatePresence>
+        {isIngestionModalOpen && (
+          <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-[#0A0A0B] border border-white/10 w-full max-w-md rounded-3xl overflow-hidden p-8 shadow-2xl relative"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="text-xl font-bold">Add Intelligence</h2>
+                  <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest mt-1">Select source origin</p>
+                </div>
+                <button onClick={() => { setIsIngestionModalOpen(false); setIngestionMode('options'); }} className="p-2 hover:bg-white/5 rounded-xl text-white/20 hover:text-white transition-all">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {ingestionMode === 'options' ? (
+                <div className="grid grid-cols-1 gap-3">
+                  <button
+                    onClick={() => { sourceFileInputRef.current?.click(); setIsIngestionModalOpen(false); }}
+                    className="flex items-center gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-[#6366F1]/30 transition-all group text-left"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-400 group-hover:scale-110 transition-transform">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold">Local Intelligence</p>
+                      <p className="text-[10px] text-white/30 font-medium">Upload PDF or Image files</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setIngestionMode('url')}
+                    className="flex items-center gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-blue-500/30 transition-all group text-left"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                      <Globe className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold">Web Scraping</p>
+                      <p className="text-[10px] text-white/30 font-medium">Ingest content from any URL</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setIngestionMode('youtube')}
+                    className="flex items-center gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-red-500/30 transition-all group text-left"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-400 group-hover:scale-110 transition-transform">
+                      <Youtube className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold">Video Analytics</p>
+                      <p className="text-[10px] text-white/30 font-medium">Process YouTube transcripts</p>
+                    </div>
+                  </button>
+                </div>
+              ) : ingestionMode === 'url' ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/40">Enter Web URL</label>
+                    <div className="relative">
+                      <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                      <input
+                        type="url"
+                        placeholder="https://example.com/article"
+                        value={urlInput}
+                        onChange={(e) => setUrlInput(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-xs focus:outline-none focus:border-[#6366F1]/50 focus:ring-1 focus:ring-[#6366F1]/20 transition-all"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => setIngestionMode('options')} className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all">Back</button>
+                    <button
+                      onClick={async () => {
+                        if (!urlInput) return;
+                        setIsProcessingExternal(true);
+                        setIsIngestionModalOpen(false);
+                        try {
+                          await addWebsite(urlInput);
+                          setUrlInput('');
+                          const updated = await fetchSources();
+                          setSources(updated);
+                        } catch (e) {
+                          setError("Failed to ingest URL");
+                        } finally {
+                          setIsProcessingExternal(false);
+                          setIngestionMode('options');
+                        }
+                      }}
+                      className="flex-2 py-3 bg-[#6366F1] hover:bg-[#4F46E5] rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all"
+                    >
+                      Process URL
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/40">YouTube Video Link</label>
+                    <div className="relative">
+                      <Youtube className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                      <input
+                        type="url"
+                        placeholder="https://youtube.com/watch?v=..."
+                        value={youtubeInput}
+                        onChange={(e) => setYoutubeInput(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-xs focus:outline-none focus:border-[#6366F1]/50 focus:ring-1 focus:ring-[#6366F1]/20 transition-all"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => setIngestionMode('options')} className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all">Back</button>
+                    <button
+                      onClick={async () => {
+                        if (!youtubeInput) return;
+                        setIsProcessingExternal(true);
+                        setIsIngestionModalOpen(false);
+                        try {
+                          await addYouTube(youtubeInput);
+                          setYoutubeInput('');
+                          const updated = await fetchSources();
+                          setSources(updated);
+                        } catch (e) {
+                          setError("Failed to ingest YouTube video");
+                        } finally {
+                          setIsProcessingExternal(false);
+                          setIngestionMode('options');
+                        }
+                      }}
+                      className="flex-2 py-3 bg-red-600 hover:bg-red-700 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all"
+                    >
+                      Process Video
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Selected Sources Preview Modal */}
+      <AnimatePresence>
+        {isSelectedPreviewOpen && (
+          <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-[#0A0A0B] border border-white/10 w-full max-w-lg rounded-3xl overflow-hidden p-8 shadow-2xl relative flex flex-col max-h-[60vh]"
+            >
+              <div className="flex items-center justify-between mb-8 shrink-0">
+                <div>
+                  <h2 className="text-xl font-bold">Active Intelligence Context</h2>
+                  <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest mt-1">Reviewing {selectedSourceIds.size} selected sources</p>
+                </div>
+                <button onClick={() => setIsSelectedPreviewOpen(false)} className="p-2 hover:bg-white/5 rounded-xl text-white/20 hover:text-white transition-all">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar pr-2">
+                {Array.from(selectedSourceIds).map(id => {
+                  const source = sources.find(s => s.id === id);
+                  if (!source) return null;
+                  return (
+                    <div key={id} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5 group hover:border-[#6366F1]/30 transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/30">
+                          {source.type === 'pdf' ? <FileText className="w-4 h-4" /> : source.type === 'url' ? <Globe className="w-4 h-4" /> : <Youtube className="w-4 h-4" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold truncate max-w-[240px]">{source.title}</p>
+                          <p className="text-[9px] text-white/20 uppercase tracking-widest">{source.type}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => toggleSourceSelection(id)}
+                        className="p-2 rounded-lg bg-red-500/10 text-red-500 opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-8 pt-6 border-t border-white/5 flex gap-3 shrink-0">
+                <button onClick={() => setSelectedSourceIds(new Set())} className="flex-1 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all">Clear All</button>
+                <button onClick={() => setIsSelectedPreviewOpen(false)} className="flex-1 py-3 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-lg shadow-[#6366F1]/20">Confirm Context</button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
