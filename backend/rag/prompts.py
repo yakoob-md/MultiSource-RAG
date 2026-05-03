@@ -163,16 +163,25 @@ def build_deep_research_prompt(question: str, result: MultiSourceResult, history
     [A 2-3 sentence high-level summary of the findings]
     
     # 🔍 DETAILED ANALYSIS
-    [A thorough, point-by-point breakdown. Cite every claim with [Source N] inline.]
+    [A thorough, point-by-point breakdown. Cite every claim with [Source N] inline. 
+     Compare and contrast findings from different sources. If sources contradict, highlight the divergence.]
     
     # ⚖️ LEGAL FRAMEWORK / CORE CONCEPTS
-    [List relevant statutes, sections, or technical principles identified in the sources]
+    [List relevant statutes, sections, or technical principles identified in the sources. 
+     Explain the application of these concepts to the current query.]
     
     # 📜 PRECEDENTS / LANDMARK FINDINGS
-    [List any specific case law or key research studies mentioned in the sources]
+    [List any specific case law or key research studies mentioned in the sources. 
+     Explain WHY these are relevant to the query.]
     
     # 🎯 CONCLUSION
-    [Synthesized final conclusion and next steps/implications]
+    [Synthesized final conclusion and next steps/implications. 
+     Provide a professional recommendation based strictly on the retrieved data.]
+    
+    CRITICAL ANALYSIS GUIDELINES:
+    1. REASONING: Show your work. Explain the logic used to connect source data to the conclusion.
+    2. GROUNDING: Do not hallucinate. If the data isn't there, say "The provided context does not specify..."
+    3. NEUTRALITY: Maintain a professional, objective tone throughout.
     """
 
     if is_legal:

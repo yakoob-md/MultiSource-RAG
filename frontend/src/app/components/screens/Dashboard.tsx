@@ -65,7 +65,7 @@ export function Dashboard() {
   ].filter(l => l.count > 0);
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto bg-transparent">
       <div className="max-w-7xl mx-auto p-8">
         {/* Header */}
         <div className="mb-8">

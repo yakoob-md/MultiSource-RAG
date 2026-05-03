@@ -1,45 +1,35 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Send, Loader2, FileText, Globe, Youtube,
   Plus, MessageSquare, Trash2, X,
   ChevronLeft, Paperclip, Image as ImageIcon,
-  Database, Upload, Link as LinkIcon, Send as SendIcon, X as XIcon, Sparkles, Clock, Lock, History,
-  Search, Zap, Gavel, Scale, Shield, ChevronUp, ChevronDown, Brain, FileDown
+  Database, Upload, Link as LinkIcon, Sparkles, Clock, Lock, History,
+  Search, Zap, Gavel, Scale, Shield, ChevronUp, ChevronDown, Brain, FileDown,
+  CheckCircle2, Activity, ChevronRight
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router';
-import { ChatMessage, RetrievedChunk, KnowledgeSource } from '../../types';
-import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, Conversation, uploadImage, uploadPdf, exportToPDF } from '../../api';
 import { cn } from '../ui/utils';
+import { AuroraBackground } from '../ui/AuroraBackground';
+import { 
+  fetchSources, streamQueryRag, fetchConversationMessages, fetchConversations, 
+  Conversation, uploadImage, uploadPdf, addWebsite, addYouTube, exportToPDF 
+} from '../../api';
+import { ChatMessage, RetrievedChunk, KnowledgeSource, Language } from '../../types';
 
 // ── Shared UI Utilities ──────────────────────────────────────────────────────
 
-interface UseAutoResizeTextareaProps {
-  minHeight: number;
-  maxHeight?: number;
-}
-
-function useAutoResizeTextarea({ minHeight, maxHeight }: UseAutoResizeTextareaProps) {
+const useAutoResizeTextarea = ({ minHeight, maxHeight }: { minHeight: number, maxHeight: number }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const adjustHeight = useCallback((reset?: boolean) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    if (reset) {
-      textarea.style.height = `${minHeight}px`;
-      return;
+  const adjustHeight = () => {
+    const node = textareaRef.current;
+    if (node) {
+      node.style.height = 'auto';
+      node.style.height = `${Math.min(Math.max(node.scrollHeight, minHeight), maxHeight)}px`;
     }
-    textarea.style.height = `${minHeight}px`;
-    const newHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight ?? Number.POSITIVE_INFINITY));
-    textarea.style.height = `${newHeight}px`;
-  }, [minHeight, maxHeight]);
-
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea) textarea.style.height = `${minHeight}px`;
-  }, [minHeight]);
-
+  };
   return { textareaRef, adjustHeight };
-}
+};
 
 interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   containerClassName?: string;
@@ -48,70 +38,54 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
 
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, containerClassName, showRing = true, ...props }, ref) => {
-    const [isFocused, setIsFocused] = useState(false);
     return (
-      <div className={cn("relative", containerClassName)}>
+      <div className={cn("relative flex flex-col w-full", containerClassName)}>
         <textarea
+          ref={ref}
           className={cn(
-            "flex min-h-[60px] w-full rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3 text-sm transition-all duration-200 ease-in-out placeholder:text-white/20 text-white/90 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
+            "flex min-h-[56px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm ring-offset-background placeholder:text-white/20 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 transition-all no-scrollbar",
+            showRing && "focus-visible:ring-1 focus-visible:ring-[#6366F1]/50 focus-visible:border-[#6366F1]/50",
             className
           )}
-          ref={ref}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
           {...props}
         />
-        {showRing && isFocused && (
-          <motion.span
-            className="absolute inset-0 rounded-xl pointer-events-none ring-2 ring-offset-0 ring-violet-500/20"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          />
-        )}
       </div>
     );
   }
 );
 Textarea.displayName = "Textarea";
 
-const sourceIcon = (type: string) => {
+function sourceIcon(type: string) {
   switch (type) {
     case 'pdf': return FileText;
-    case 'web':
-    case 'url': return Globe;
+    case 'web': return Globe;
     case 'youtube': return Youtube;
-    case 'image': return ImageIcon;
     default: return FileText;
   }
-};
+}
 
-// ── Legal Citation Card (Enhanced with Tooltip) ───────────────────────────────
 function LegalCitationCard({ chunk, index }: { chunk: RetrievedChunk; index: number }) {
   const [showTooltip, setShowTooltip] = useState(false);
   const score = Math.round((chunk.similarityScore || 0) * 100);
 
   return (
     <div 
-      className="relative"
+      className="relative group p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-[#6366F1]/30 transition-all"
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
-      <div className="bg-white/5 border border-white/10 rounded-xl p-4 shadow-sm hover:border-[#6366F1]/30 transition-all group h-full">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-[#6366F1]/10 flex items-center justify-center border border-[#6366F1]/20">
-               <Scale className="w-3.5 h-3.5 text-[#6366F1]" />
-            </div>
-            <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest truncate max-w-[100px]">{chunk.sourceName}</span>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-lg bg-[#6366F1]/10 flex items-center justify-center">
+            <FileText className="w-3.5 h-3.5 text-[#6366F1]" />
           </div>
-          <span className="text-[9px] font-bold text-[#6366F1] bg-[#6366F1]/10 px-1.5 py-0.5 rounded-md">{score}% match</span>
+          <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest truncate max-w-[100px]">{chunk.sourceName}</span>
         </div>
-        <p className="text-xs text-white/60 leading-relaxed line-clamp-3 italic">
-          "{chunk.text}"
-        </p>
+        <span className="text-[9px] font-bold text-[#6366F1] bg-[#6366F1]/10 px-1.5 py-0.5 rounded-md">{score}% match</span>
       </div>
+      <p className="text-xs text-white/60 leading-relaxed line-clamp-3 italic">
+        "{chunk.text}"
+      </p>
 
       <AnimatePresence>
         {showTooltip && (
@@ -163,6 +137,7 @@ export function LegalAssistant() {
   });
   const [agenticMode, setAgenticMode] = useState<boolean>(() => localStorage.getItem('legal-agentic-mode') === 'true');
   const [agentStatus, setAgentStatus] = useState<string[]>([]);
+  const [currentStep, setCurrentStep] = useState(0);
 
   const [legalFilter, setLegalFilter] = useState<string | null>(null);
 
@@ -181,6 +156,21 @@ export function LegalAssistant() {
   const [mentionIndex, setMentionIndex] = useState(0);
   const [taggedSourceIds, setTaggedSourceIds] = useState<Set<string>>(new Set());
 
+  // ── Source Management state ──
+  const [isIngestionModalOpen, setIsIngestionModalOpen] = useState(false);
+  const [isSelectedPreviewOpen, setIsSelectedPreviewOpen] = useState(false);
+  const [sourceSearchQuery, setSourceSearchQuery] = useState('');
+  const [ingestionMode, setIngestionMode] = useState<'options' | 'url' | 'youtube'>('options');
+  const [urlInput, setUrlInput] = useState('');
+  const [youtubeInput, setYoutubeInput] = useState('');
+  const [isProcessingExternal, setIsProcessingExternal] = useState(false);
+  const sourceFileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Research Intelligence state ──
+  const [activeChunks, setActiveChunks] = useState<RetrievedChunk[]>([]);
+  const [showIntelligence, setShowIntelligence] = useState(false);
+  const [embeddingActivity, setEmbeddingActivity] = useState(false);
+
   const filteredMentions = useMemo(() => {
     if (!mentionQuery) {
       // Show legal sources first when in legal mode, then recent sources
@@ -193,39 +183,23 @@ export function LegalAssistant() {
         .slice(0, 5);
       return [...legalSources, ...recentSources];
     }
-    
-    const query = mentionQuery.toLowerCase();
     return sources.filter(s => 
-      selectedSourceIds.has(s.id) && (
-        s.title.toLowerCase().includes(query) ||
-        s.metadata?.docType?.includes(query) ||
-        s.metadata?.court?.toLowerCase().includes(query)
-      )
-    );
-  }, [mentionQuery, sources, selectedSourceIds]);
+      s.title.toLowerCase().includes(mentionQuery.toLowerCase())
+    ).slice(0, 8);
+  }, [sources, mentionQuery, selectedSourceIds]);
 
-  const handleMentionSelect = (source: KnowledgeSource) => {
-    const words = question.split(' ');
-    words[words.length - 1] = `@${source.title} `;
-    setQuestion(words.join(' '));
-    setTaggedSourceIds(prev => new Set(prev).add(source.id));
-    setShowMentions(false);
-    textareaRef.current?.focus();
-  };
-  const handleNewChat = useCallback(() => {
-    setMessages([]);
-    setQuestion('');
-    setStreamingAnswer('');
-    setError(null);
-    setActiveConvId(null);
-    (window as any).currentConversationId = null;
-    navigate('/app/legal');
-  }, [navigate]);
+  useEffect(() => {
+    fetchSources().then(setSources).catch(console.error);
+    fetchConversations().then(list => {
+      setConversations(list.filter(c => c.conv_type === 'legal' || !c.conv_type));
+    });
+  }, []);
 
-  const handleOpenSources = useCallback(() => setIsKbOpen(true), []);
-  const handleOpenHistory = useCallback(() => setSidebarOpen(true), []);
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, streamingAnswer, isThinking]);
 
-  const loadConversation = useCallback(async (convId: string) => {
+  const loadConversation = async (convId: string) => {
     setActiveConvId(convId);
     (window as any).currentConversationId = convId;
     setMessages([]);
@@ -263,84 +237,63 @@ export function LegalAssistant() {
           role: 'assistant',
           content: m.answer,
           timestamp: new Date(m.createdAt),
-          retrievedChunks: chunkRefs,
+          retrievedChunks: chunkRefs
         });
       }
       setMessages(rebuilt);
-    } catch {
-      setError('Failed to load legal conversation');
+    } catch (err) {
+      setError("Failed to load conversation history");
     }
-  }, [sources]);
+  };
 
-  useEffect(() => {
-    fetchSources().then(setSources).catch(() => {});
-    fetchConversations().then(setConversations).catch(() => {});
-    
-    // Check for ID in URL
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get('id');
-    if (id) {
-      loadConversation(id);
-      // Clean URL after loading
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('legal-llm-provider', llmProvider);
-  }, [llmProvider]);
-
-  useEffect(() => {
-    localStorage.setItem('legal-agentic-mode', String(agenticMode));
-  }, [agenticMode]);
-
-  useEffect(() => {
-    const handleLoadConv = (e: any) => {
-      if (e.detail?.id) loadConversation(e.detail.id);
-    };
-    const handleNewChatEv = () => handleNewChat();
-    const handleOpenHistEv = () => handleOpenHistory();
-    const handleOpenSourcesEv = () => handleOpenSources();
-    
-    window.addEventListener('load-conversation', handleLoadConv);
-    window.addEventListener('new-chat', handleNewChatEv);
-    window.addEventListener('open-history', handleOpenHistEv);
-    window.addEventListener('open-sources', handleOpenSourcesEv);
-    return () => {
-      window.removeEventListener('load-conversation', handleLoadConv);
-      window.removeEventListener('new-chat', handleNewChatEv);
-      window.removeEventListener('open-history', handleOpenHistEv);
-      window.removeEventListener('open-sources', handleOpenSourcesEv);
-    };
-  }, [loadConversation, handleNewChat, handleOpenHistory, handleOpenSources]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingAnswer]);
-
-  const handleSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!question.trim() || isThinking || isStreaming) return;
-
-    const currentQuestion = question;
-    setQuestion('');
-    adjustHeight(true);
+  const handleNewChat = () => {
+    setActiveConvId(null);
+    (window as any).currentConversationId = null;
+    setMessages([]);
+    setStreamingAnswer('');
     setError(null);
+  };
+
+  const handleExport = async () => {
+    if (!messages.length) return;
+    const lastAssistantMessage = [...messages].reverse().find(m => m.role === 'assistant');
+    if (!lastAssistantMessage) {
+        setError("No research content to export");
+        return;
+    }
+
+    try {
+      // Export formatting according to api.ts signature
+      await exportToPDF(
+        "Legal Research Memorandum", 
+        lastAssistantMessage.content,
+        lastAssistantMessage.retrievedChunks || []
+      );
+    } catch (err) {
+      setError("Failed to export memorandum");
+    }
+  };
+
+  const handleSubmit = async (overrideText?: string) => {
+    const text = overrideText || question;
+    if (!text.trim()) return;
 
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: currentQuestion,
+      content: text,
       timestamp: new Date(),
     };
 
     setMessages(prev => [...prev, userMsg]);
-    setAgentStatus([]);
+    setQuestion('');
     setIsThinking(true);
     setIsStreaming(true);
     setStreamingAnswer('');
+    setAgentStatus(['Initializing Research Agent...']);
+    setCurrentStep(0);
+    setActiveChunks([]);
 
-    // Chat memory
     const history = messages.slice(-6).map(m => ({ role: m.role, content: m.content }));
 
     try {
@@ -353,16 +306,20 @@ export function LegalAssistant() {
       let capturedChunks: RetrievedChunk[] = [];
 
       await streamQueryRag(
-        currentQuestion,
+        text,
         sourceFilter,
         history,
         (token) => {
           setIsThinking(false);
           fullAnswer += token;
           setStreamingAnswer(fullAnswer);
+          setCurrentStep(4); // Synthesis step
         },
         (meta) => {
-          if (meta.retrievedChunks) capturedChunks = meta.retrievedChunks;
+          if (meta.retrievedChunks) {
+            capturedChunks = meta.retrievedChunks;
+            setActiveChunks(meta.retrievedChunks);
+          }
           if (meta.conversationId) {
             setActiveConvId(meta.conversationId);
             (window as any).currentConversationId = meta.conversationId;
@@ -371,6 +328,8 @@ export function LegalAssistant() {
           if ((meta as any).activeProvider) {
             setActiveModel((meta as any).activeProvider);
           }
+          setEmbeddingActivity(true);
+          setTimeout(() => setEmbeddingActivity(false), 2000);
         },
         (err) => { throw err; },
         undefined,
@@ -384,6 +343,15 @@ export function LegalAssistant() {
             if (prev.includes(status.message)) return prev;
             return [...prev, status.message];
           });
+          
+          // Map backend stages to UI steps (0-4)
+          // Status contains stage (0-4 from agent_workflow status_log indices)
+          if (status.stage !== undefined) {
+             if (status.message.includes("Planner")) setCurrentStep(1);
+             if (status.message.includes("Searcher")) setCurrentStep(2);
+             if (status.message.includes("Validator")) setCurrentStep(3);
+             if (status.message.includes("Synthesizer")) setCurrentStep(4);
+          }
         }
       );
 
@@ -396,363 +364,885 @@ export function LegalAssistant() {
       };
 
       setMessages(prev => [...prev, aiMsg]);
-      setStreamingAnswer('');
-      setTaggedSourceIds(new Set()); // Reset tags
-      fetchConversations().then(setConversations);
-    } catch (err: any) {
-      setError(err.message || "Legal search failed");
-    } finally {
       setIsStreaming(false);
+      setStreamingAnswer('');
+      setTaggedSourceIds(new Set()); // Reset tags after submission
+
+    } catch (err: any) {
+      setError(err.message || "Pipeline execution failed");
       setIsThinking(false);
+      setIsStreaming(false);
     }
   };
 
-  const isInitial = messages.length === 0 && !isStreaming && !isThinking;
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (showMentions && filteredMentions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionIndex(prev => (prev + 1) % filteredMentions.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionIndex(prev => (prev - 1 + filteredMentions.length) % filteredMentions.length);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        handleMentionSelect(filteredMentions[mentionIndex]);
+      } else if (e.key === 'Escape') {
+        setShowMentions(false);
+      }
+      return;
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    const lastAtPos = value.lastIndexOf('@');
+    
+    if (lastAtPos !== -1 && lastAtPos >= value.lastIndexOf(' ')) {
+      const query = value.substring(lastAtPos + 1);
+      setMentionQuery(query);
+      setShowMentions(true);
+      setMentionIndex(0);
+    } else {
+      setShowMentions(false);
+    }
+    adjustHeight();
+  };
+
+  const handleMentionSelect = (source: KnowledgeSource) => {
+    const lastAtPos = question.lastIndexOf('@');
+    const newText = question.substring(0, lastAtPos); // Remove the @query
+    setQuestion(newText); // Remove the @ part from text, keep it as a tag
+    setTaggedSourceIds(prev => new Set(prev).add(source.id));
+    setShowMentions(false);
+    setMentionQuery('');
+    textareaRef.current?.focus();
+  };
+
+  const isInitial = messages.length === 0 && !isThinking && !isStreaming;
 
   return (
-    <div className="h-full flex flex-col bg-[#0A0A0B] relative overflow-hidden">
-      {/* Background Decor */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-[#6366F1]/5 blur-[120px] rounded-full" />
-        <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-purple-500/5 blur-[100px] rounded-full" />
-      </div>
+    <AuroraBackground className="h-full w-full">
+      <div className="h-full flex bg-transparent relative overflow-hidden">
+        {/* Main Chat Area */}
+        <div className="flex-1 flex flex-col min-w-0 relative h-full">
 
-      {/* Header */}
-      <div className="px-8 py-6 border-b border-white/10 flex items-center justify-between backdrop-blur-xl relative z-10">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-[#6366F1]/10 flex items-center justify-center border border-[#6366F1]/20">
-            <Gavel className="w-6 h-6 text-[#6366F1]" />
+        {/* Header */}
+        <div className="px-8 py-6 border-b border-white/10 flex items-center justify-between backdrop-blur-xl relative z-10">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-[#6366F1]/10 flex items-center justify-center border border-[#6366F1]/20">
+              <Gavel className="w-6 h-6 text-[#6366F1]" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">Legal Assistant</h1>
+              <p className="text-[10px] text-white/20 font-bold uppercase tracking-[0.2em] mt-0.5">Statutory Intelligence Workbench</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Legal Specialist AI</h1>
-            <p className="text-[10px] text-white/30 font-bold uppercase tracking-[0.2em]">InteleX Constitutional Intelligence</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button onClick={() => setSidebarOpen(true)} className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-white transition-all flex items-center gap-2">
-             <History className="w-4 h-4" />
-             <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">History</span>
-          </button>
-
-          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10">
-             <Scale className="w-4 h-4 text-[#6366F1]" />
-             <select 
-               value={llmProvider} 
-               onChange={(e) => setLlmProvider(e.target.value)}
-               className="bg-transparent border-none text-xs font-bold uppercase tracking-widest text-white/60 focus:outline-none cursor-pointer"
-             >
-               <option value="huggingface" className="bg-[#0A0A0B]">Kaggle Fine-Tuned</option>
-               <option value="groq" className="bg-[#0A0A0B]">Groq 8B (High Speed)</option>
-             </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto px-6 py-8 space-y-8 no-scrollbar relative z-10">
-        {isInitial && (
-          <div className="h-full flex flex-col items-center justify-center text-center space-y-8">
-             <motion.div 
-               initial={{ scale: 0.9, opacity: 0 }}
-               animate={{ scale: 1, opacity: 1 }}
-               className="space-y-4"
-             >
-                <h2 className="text-4xl font-bold text-white/90">How can I assist your legal research?</h2>
-                <p className="text-sm text-white/30 max-w-md mx-auto">Analyze IPC, CrPC, Constitution, and Supreme Court Judgments with persistent conversational context.</p>
-             </motion.div>
-             <div className="flex gap-4">
-                <button onClick={() => setIsKbOpen(true)} className="px-6 py-3 rounded-2xl bg-[#6366F1]/10 border border-[#6366F1]/20 text-xs font-bold uppercase tracking-widest text-[#6366F1] hover:bg-[#6366F1]/20 transition-all flex items-center gap-2">
-                   <Database className="w-4 h-4" /> Select Sources
-                </button>
-             </div>
-          </div>
-        )}
-
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={cn(
-              "max-w-[85%] rounded-3xl p-6 transition-all",
-              msg.role === 'user' 
-                ? "bg-[#6366F1] text-white shadow-xl shadow-[#6366F1]/10" 
-                : "bg-white/[0.03] border border-white/5 backdrop-blur-xl relative group"
-            )}>
-              {msg.role === 'assistant' && (
-                <button
-                  onClick={() => exportToPDF("Legal Research Memorandum", msg.content, msg.retrievedChunks || [])}
-                  className="absolute top-4 right-4 p-2 rounded-lg bg-white/5 border border-white/10 opacity-0 group-hover:opacity-100 transition-all hover:bg-[#6366F1]/20 hover:border-[#6366F1]/30 text-white/40 hover:text-[#6366F1]"
-                  title="Download Legal Memo (PDF)"
-                >
-                  <FileDown className="w-4 h-4" />
-                </button>
+          
+          <div className="flex items-center gap-3">
+             <button
+              onClick={() => setShowIntelligence(!showIntelligence)}
+              className={cn(
+                "p-3 rounded-xl border transition-all flex items-center gap-2",
+                showIntelligence 
+                  ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-500" 
+                  : "bg-white/5 border-white/10 text-white/40 hover:text-white hover:bg-white/10"
               )}
-              <div className="flex items-center gap-2 mb-2">
-                 <span className="text-[10px] font-bold uppercase tracking-widest text-white/20">{msg.role === 'user' ? 'Counsel' : 'Legal AI'}</span>
+              title="Toggle Research Intelligence"
+            >
+              <Activity className="w-5 h-5" />
+              <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Intelligence</span>
+            </button>
+             <button
+              onClick={handleExport}
+              disabled={messages.length === 0}
+              className={cn(
+                "p-3 rounded-xl border transition-all flex items-center gap-2",
+                messages.length > 0 
+                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20" 
+                  : "bg-white/5 border-white/10 text-white/20 cursor-not-allowed"
+              )}
+              title="Export Memorandum"
+            >
+              <FileDown className="w-5 h-5" />
+              <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Export</span>
+            </button>
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-3 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all group"
+            >
+              <History className="w-5 h-5 group-hover:rotate-[-12deg] transition-transform" />
+            </button>
+            <button
+              onClick={() => setIsKbOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-[#6366F1]/10 text-[#6366F1] border border-[#6366F1]/20 flex items-center gap-2 hover:bg-[#6366F1]/20 transition-all"
+            >
+              <Database className="w-4 h-4" />
+              <span className="text-[11px] font-bold uppercase tracking-widest">Knowledge Base</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Chat Area */}
+        <div className="flex-1 overflow-y-auto py-10 no-scrollbar relative z-10">
+          <div className="max-w-3xl mx-auto px-8 space-y-8">
+          {isInitial ? (
+            <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto text-center space-y-8">
+              <div className="w-20 h-20 rounded-[2.5rem] bg-[#6366F1]/10 flex items-center justify-center border border-[#6366F1]/20 animate-pulse">
+                <Scale className="w-10 h-10 text-[#6366F1]" />
               </div>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">{msg.content}</p>
+              <div className="space-y-4">
+                <h2 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white to-white/40">
+                  How can InteleX assist your legal research today?
+                </h2>
+                <p className="text-sm text-white/30 leading-relaxed max-w-lg mx-auto">
+                  Analyze statutes, cross-reference precedents, and generate memoranda with verified citations and grounding.
+                </p>
+              </div>
               
-              {msg.role === 'assistant' && msg.retrievedChunks && msg.retrievedChunks.length > 0 && (
-                <div className="mt-6 pt-6 border-t border-white/5">
-                   <p className="text-[10px] font-bold uppercase tracking-widest text-white/20 mb-4">Legal Basis & Citations</p>
-                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                     {msg.retrievedChunks.slice(0, 4).map((chunk, ci) => (
-                       <LegalCitationCard key={ci} chunk={chunk} index={ci} />
-                     ))}
-                   </div>
-                </div>
-              )}
+              <div className="grid grid-cols-2 gap-4 w-full pt-4">
+                {[
+                  { title: "Statutory Analysis", desc: "Interpret Section 438 CrPC conditions", icon: Shield },
+                  { title: "Case Precedents", desc: "Recent SC rulings on anticipatory bail", icon: Gavel }
+                ].map((item, idx) => (
+                  <button 
+                    key={idx}
+                    onClick={() => setQuestion(item.desc)}
+                    className="p-6 rounded-3xl bg-white/[0.02] border border-white/5 hover:border-[#6366F1]/30 hover:bg-[#6366F1]/5 transition-all group text-left space-y-3"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/20 group-hover:text-[#6366F1] group-hover:bg-[#6366F1]/10 transition-all">
+                      <item.icon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white/80">{item.title}</p>
+                      <p className="text-[10px] text-white/20 mt-1 leading-relaxed">{item.desc}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-
-        {/* Agent Status Display */}
-        {(isThinking || isStreaming) && agentStatus.length > 0 && (
-          <div className="mb-4 p-4 rounded-2xl bg-purple-500/5 border border-purple-500/10 animate-in fade-in slide-in-from-bottom-2 duration-500 w-fit">
-            <div className="flex items-center gap-2 mb-3">
-              <Brain className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Legal Research Pipeline</span>
-            </div>
-            <div className="space-y-2">
-              {agentStatus.map((status, idx) => (
-                <div key={idx} className="flex items-start gap-2 text-[11px] text-white/50 font-mono">
-                  <span className="text-purple-500/50">›</span>
-                  <span>{status}</span>
+          ) : (
+            <>
+              {messages.map((msg, i) => (
+                <div key={msg.id} className={cn("flex", msg.role === 'user' ? "justify-end" : "justify-start")}>
+                  <div className={cn(
+                    "max-w-[85%] p-6 rounded-[2rem] relative group transition-all",
+                    msg.role === 'user' 
+                      ? "bg-[#6366F1] text-white rounded-tr-none shadow-xl shadow-[#6366F1]/20" 
+                      : "bg-white/[0.03] border border-white/10 rounded-tl-none backdrop-blur-xl"
+                  )}>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                    
+                    {msg.retrievedChunks && msg.retrievedChunks.length > 0 && (
+                      <div className="mt-6 pt-6 border-t border-white/5 space-y-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <LinkIcon className="w-3.5 h-3.5 text-[#6366F1]" />
+                          <span className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Verified Evidence Chunks</span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3">
+                          {msg.retrievedChunks.slice(0, 4).map((chunk, ci) => (
+                            <LegalCitationCard key={ci} chunk={chunk} index={ci} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="absolute -bottom-6 left-2 opacity-0 group-hover:opacity-100 transition-all flex items-center gap-4">
+                       <span className="text-[9px] font-bold text-white/20 uppercase tracking-widest">{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                  </div>
                 </div>
               ))}
-            </div>
-          </div>
-        )}
-
-        {isThinking && (
-          <div className="flex items-center gap-3 text-white/40 p-4 rounded-2xl bg-white/5 w-fit">
-            <Loader2 className="w-4 h-4 animate-spin text-[#6366F1]" />
-            <span className="text-xs font-bold uppercase tracking-widest">Counsel is reviewing files...</span>
-          </div>
-        )}
-
-        {isStreaming && streamingAnswer && (
-          <div className="max-w-[85%] p-6 rounded-3xl bg-[#6366F1]/5 border border-[#6366F1]/10 backdrop-blur-xl">
-             <div className="flex items-center justify-between mb-2">
-                 <span className="text-[10px] font-bold uppercase tracking-widest text-[#6366F1]/60">InteleX</span>
-                 {activeModel && (
-                   <span className="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-[#6366F1]/10 text-[#6366F1] border border-[#6366F1]/20">
-                     Active: {activeModel === 'huggingface' ? 'Legal' : 'Groq'}
-                   </span>
-                 )}
-              </div>
-            <p className="text-sm leading-relaxed whitespace-pre-line font-medium text-white/90">
-              {streamingAnswer}
-              <span className="inline-block w-1 h-4 ml-1 bg-[#6366F1] animate-pulse align-middle" />
-            </p>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} className="h-40" />
-      </div>
-
-      {/* Input Section */}
-      <div className="px-6 pb-8 pt-4 relative z-20">
-        <div className="max-w-4xl mx-auto">
-          <div className="relative group">
-            {/* Mention Suggestions */}
-            <AnimatePresence>
-              {showMentions && filteredMentions.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  className="absolute bottom-full mb-2 left-0 w-64 bg-[#111114] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-[100]"
-                >
-                  <div className="p-2 border-b border-white/5 bg-white/5">
-                    <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest px-2 py-1">Tag Legal Source</p>
+              {isThinking && (
+                <div className="flex justify-start">
+                  <div className="bg-white/[0.03] border border-white/10 p-6 rounded-[2rem] rounded-tl-none backdrop-blur-xl space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-[#6366F1] animate-bounce" />
+                      <div className="w-2 h-2 rounded-full bg-[#6366F1] animate-bounce [animation-delay:-0.15s]" />
+                      <div className="w-2 h-2 rounded-full bg-[#6366F1] animate-bounce [animation-delay:-0.3s]" />
+                    </div>
+                    <div className="space-y-2">
+                      {agentStatus.map((status, idx) => (
+                        <motion.div 
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          key={idx} 
+                          className="flex items-center gap-2"
+                        >
+                          <Zap className="w-3 h-3 text-[#6366F1]" />
+                          <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{status}</span>
+                        </motion.div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="max-h-48 overflow-y-auto">
-                    {filteredMentions.map((s, idx) => (
-                      <button
-                        key={s.id}
-                        onClick={() => handleMentionSelect(s)}
-                        className={cn(
-                          "w-full px-4 py-2 text-left text-xs transition-colors hover:bg-[#6366F1]/20 flex items-center gap-2",
-                          idx === mentionIndex ? "bg-[#6366F1]/10" : ""
-                        )}
-                      >
-                        <FileText className="w-3 h-3 text-white/40" />
-                        <span className="truncate">{s.title}</span>
-                      </button>
-                    ))}
-                  </div>
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
-
-            <div className="backdrop-blur-2xl bg-white/[0.02] rounded-2xl border border-white/5 shadow-2xl transition-all focus-within:border-[#6366F1]/30">
-              <div className="p-2 pt-4">
-                <Textarea 
-                  ref={textareaRef}
-                  value={question}
-                  onChange={(e: any) => { 
-                    const val = e.target.value;
-                    setQuestion(val); 
-                    adjustHeight(); 
-                    
-                    const lastWord = val.split(' ').pop() || '';
-                    if (lastWord.startsWith('@')) {
-                      setMentionQuery(lastWord.slice(1));
-                      setShowMentions(true);
-                      setMentionIndex(0);
-                    } else {
-                      setShowMentions(false);
-                    }
-                  }}
-                  onKeyDown={(e: any) => { 
-                    if (showMentions && filteredMentions.length > 0) {
-                      if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        setMentionIndex(prev => (prev + 1) % filteredMentions.length);
-                      } else if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        setMentionIndex(prev => (prev - 1 + filteredMentions.length) % filteredMentions.length);
-                      } else if (e.key === 'Enter' || e.key === 'Tab') {
-                        e.preventDefault();
-                        handleMentionSelect(filteredMentions[mentionIndex]);
-                      } else if (e.key === 'Escape') {
-                        setShowMentions(false);
-                      }
-                      return;
-                    }
-
-                    if(e.key === 'Enter' && !e.shiftKey) { 
-                      e.preventDefault(); 
-                      handleSubmit(); 
-                    } 
-                  }}
-                  placeholder="Query Indian Laws, SC Judgments, or Constitutional Articles..."
-                  className="min-h-[56px] border-none bg-transparent focus:ring-0"
-                />
-              </div>
-              <div className="p-3 border-t border-white/5 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                   <button 
-                     onClick={() => setIsKbOpen(true)}
-                     className="p-2 text-white/20 hover:text-white transition-all flex items-center gap-2"
-                     title="Select Knowledge Sources"
-                   >
-                     <Database className="w-4 h-4" />
-                     <span className="text-[10px] font-bold uppercase tracking-widest">{selectedSourceIds.size || 'No'} Sources</span>
-                   </button>
-                   
-                   <div className="h-4 w-px bg-white/5 mx-2" />
-                   
-                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-[#6366F1]/30 transition-all group">
-                    {llmProvider === 'huggingface' ? (
-                      <Scale className="w-3.5 h-3.5 text-[#6366F1]" />
-                    ) : (
-                      <Zap className="w-3.5 h-3.5 text-[#6366F1]" />
-                    )}
-                    <select
-                      value={llmProvider}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setLlmProvider(val);
-                        localStorage.setItem('legal-llm-provider', val);
-                      }}
-                      className="bg-transparent border-none text-[10px] font-bold uppercase tracking-widest text-white/40 focus:outline-none cursor-pointer group-hover:text-white transition-colors"
-                      title="Select LLM Provider"
-                    >
-                      <option value="huggingface" className="bg-[#0A0A0B]">Legal Model (Fine-tuned)</option>
-                      <option value="groq" className="bg-[#0A0A0B]">General Model (Groq)</option>
-                    </select>
+              {isStreaming && streamingAnswer && (
+                <div className="flex justify-start">
+                  <div className="max-w-[85%] p-6 bg-white/[0.03] border border-white/10 rounded-[2rem] rounded-tl-none backdrop-blur-xl">
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{streamingAnswer}</p>
                   </div>
-                   
-                    <div className="h-4 w-px bg-white/5 mx-2" />
-                    
-                    {/* Deep Research Toggle */}
-                    <button
-                      onClick={() => setAgenticMode(!agenticMode)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all ${
-                        agenticMode 
-                          ? 'bg-purple-500/10 text-purple-400 border-purple-500/30 shadow-[0_0_10px_rgba(168,85,247,0.1)]' 
-                          : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'
-                      }`}
-                      title="Enable Agentic Multi-Stage Reasoning"
-                    >
-                      <Brain className={`w-3.5 h-3.5 ${agenticMode ? 'animate-pulse' : ''}`} />
-                      <span>Deep Research</span>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </>
+          )}
+          </div>
+        </div>
+
+        {/* Input Section */}
+        <div className="px-6 pb-8 pt-4 relative z-20">
+          <div className="max-w-3xl mx-auto">
+            <div className="relative group">
+              {/* Mentions UI */}
+              <AnimatePresence>
+                {showMentions && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="absolute bottom-full left-0 w-full mb-4 bg-[#111114] border border-white/10 rounded-2xl p-2 shadow-2xl backdrop-blur-2xl z-50 overflow-hidden"
+                  >
+                    <div className="p-3 border-b border-white/5 flex items-center justify-between">
+                       <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Available Sources</span>
+                       <span className="text-[10px] text-[#6366F1] font-mono">@{mentionQuery}</span>
+                    </div>
+                    <div className="max-h-[280px] overflow-y-auto no-scrollbar">
+                      {filteredMentions.map((s, idx) => (
+                        <button
+                          key={s.id}
+                          onClick={() => handleMentionSelect(s)}
+                          className={cn(
+                            "w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left",
+                            idx === mentionIndex ? "bg-[#6366F1]/10 text-white" : "text-white/40 hover:bg-white/5"
+                          )}
+                        >
+                          <div className={cn(
+                            "w-8 h-8 rounded-lg flex items-center justify-center border transition-colors",
+                            idx === mentionIndex ? "bg-[#6366F1]/20 border-[#6366F1]/40 text-[#6366F1]" : "bg-white/5 border-white/10"
+                          )}>
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                             <p className="text-xs font-bold truncate">{s.title}</p>
+                             <p className="text-[9px] uppercase tracking-widest opacity-50">{s.type}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="backdrop-blur-2xl bg-white/[0.02] border border-white/10 rounded-[2.5rem] shadow-2xl shadow-black/50 transition-all group-focus-within:border-[#6366F1]/50 group-focus-within:bg-white/[0.04]">
+                <div className="p-2 pt-4">
+                  <textarea
+                    ref={textareaRef}
+                    value={question}
+                    onChange={(e) => {
+                      setQuestion(e.target.value);
+                      handleTextareaChange(e);
+                    }}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Ask about Sections, IPC, CrPC..."
+                    className="w-full bg-transparent border-none resize-none px-6 py-2 text-sm text-white/90 focus:ring-0 placeholder:text-white/20 min-h-[50px] no-scrollbar"
+                  />
+                </div>
+                
+                {/* Active Tags */}
+                {taggedSourceIds.size > 0 && (
+                  <div className="px-6 pb-2 flex flex-wrap gap-2">
+                    {Array.from(taggedSourceIds).map(sid => {
+                      const s = sources.find(src => src.id === sid);
+                      if (!s) return null;
+                      return (
+                        <div key={sid} className="flex items-center gap-2 pl-2 pr-1 py-1 rounded-lg bg-[#6366F1]/20 border border-[#6366F1]/30 text-[#6366F1]">
+                          <span className="text-[10px] font-bold truncate max-w-[120px]">@{s.title}</span>
+                          <button onClick={() => {
+                            const next = new Set(taggedSourceIds);
+                            next.delete(sid);
+                            setTaggedSourceIds(next);
+                          }} className="p-0.5 hover:bg-[#6366F1]/20 rounded transition-all">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="p-3 border-t border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button className="p-2.5 rounded-xl bg-white/5 text-white/40 hover:bg-white/10 hover:text-[#6366F1] transition-all">
+                      <Paperclip className="w-4 h-4" />
                     </button>
-                    
-                    <div className="h-4 w-px bg-white/5 mx-2" />
-                   
-                   <div className="flex items-center gap-3">
+                    <div className="w-[1px] h-4 bg-white/10 mx-1" />
+                    <div className="flex items-center bg-white/5 rounded-xl p-1">
                       {['statute', 'judgment'].map(f => (
                         <button 
                           key={f}
                           onClick={() => setLegalFilter(legalFilter === f ? null : f)}
                           className={cn(
-                            "px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest border transition-all",
-                            legalFilter === f 
-                              ? "bg-[#6366F1]/20 border-[#6366F1]/40 text-[#6366F1]" 
-                              : "bg-white/5 border-white/10 text-white/20 hover:text-white/60"
+                            "px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all",
+                            legalFilter === f ? "bg-[#6366F1] text-white" : "text-white/20 hover:text-white"
                           )}
                         >
                           {f}s
                         </button>
                       ))}
-                   </div>
-                </div>
+                    </div>
+                  </div>
 
-                <button 
-                  onClick={() => handleSubmit()}
-                  disabled={!question.trim() || isThinking || isStreaming}
-                  className={cn(
-                    "p-2 rounded-xl transition-all",
-                    question.trim() ? "bg-[#6366F1] text-white" : "bg-white/5 text-white/10"
-                  )}
-                >
-                  <Send className="w-4 h-4" />
-                </button>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/5">
+                      <Zap className={cn("w-3.5 h-3.5 transition-colors", agenticMode ? "text-amber-500" : "text-white/20")} />
+                      <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Deep Research</span>
+                      <button 
+                        onClick={() => {
+                          const next = !agenticMode;
+                          setAgenticMode(next);
+                          localStorage.setItem('legal-agentic-mode', String(next));
+                        }}
+                        className={cn(
+                          "w-8 h-4 rounded-full relative transition-all duration-300",
+                          agenticMode ? "bg-[#6366F1]" : "bg-white/10"
+                        )}
+                      >
+                        <motion.div 
+                          animate={{ x: agenticMode ? 18 : 2 }}
+                          className="absolute top-1 w-2 h-2 rounded-full bg-white shadow-sm"
+                        />
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => handleSubmit()}
+                      disabled={!question.trim() || isThinking || isStreaming}
+                      className={cn(
+                        "p-2 rounded-xl transition-all",
+                        question.trim() ? "bg-[#6366F1] text-white" : "bg-white/5 text-white/10"
+                      )}
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
           </div>
         </div>
       </div>
+      </div>
 
-      {/* Simple Source Modal (Simplified for this version) */}
+      {/* Research Intelligence Sidebar (Visual Proof) */}
+      <AnimatePresence>
+        {showIntelligence && (
+          <motion.div
+            initial={{ x: 400, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 400, opacity: 0 }}
+            className="w-[380px] border-l border-white/10 bg-black/20 backdrop-blur-3xl flex flex-col relative z-30 hidden lg:flex"
+          >
+            {/* Sidebar Header */}
+            <div className="p-6 border-b border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+                  <Activity className="w-4 h-4 text-emerald-500" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">Research Intelligence</h3>
+                  <p className="text-[9px] text-white/30 font-bold uppercase tracking-widest">Real-time Pipeline Audit</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowIntelligence(false)}
+                className="p-1.5 hover:bg-white/5 rounded-lg text-white/20 transition-all"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-8 no-scrollbar">
+              {/* 1. Pipeline Status */}
+              <section>
+                <div className="flex items-center gap-2 mb-4">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Intelligence Flow</span>
+                </div>
+                <div className="space-y-3">
+                  {['Query Decomposition', 'Vector Semantic Search', 'Cross-Encoder Reranking', 'Synthesis Guardrails'].map((step, idx) => {
+                    const stepNum = idx + 1;
+                    const isActive = (isThinking || isStreaming) && currentStep === stepNum;
+                    const isDone = (isThinking || isStreaming) && currentStep > stepNum;
+                    return (
+                      <div key={step} className="flex items-center gap-3">
+                        <div className={cn(
+                          "w-1.5 h-1.5 rounded-full transition-all duration-500",
+                          isActive ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] scale-150" : "bg-white/10",
+                          isDone ? "bg-emerald-500/40" : ""
+                        )} />
+                        <span className={cn(
+                          "text-[11px] font-medium transition-colors",
+                          isActive ? "text-white" : "text-white/20",
+                          isDone ? "text-emerald-500/60" : ""
+                        )}>{step}</span>
+                        {isDone && <CheckCircle2 className="w-3 h-3 text-emerald-500/40 ml-auto" />}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* 2. Vector Embedding Matrix (Creative Visualization) */}
+              <section>
+                <div className="flex items-center gap-2 mb-4">
+                  <Database className="w-3.5 h-3.5 text-blue-500" />
+                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Vector Embedding Matrix</span>
+                </div>
+                <div className="h-32 rounded-2xl bg-white/[0.02] border border-white/5 overflow-hidden relative group p-1">
+                  {/* Real-time reactive grid */}
+                  <div className="absolute inset-0 grid grid-cols-12 gap-[2px] p-2">
+                    {Array.from({ length: 96 }).map((_, i) => {
+                      const isActive = (isThinking || isStreaming || embeddingActivity);
+                      return (
+                        <motion.div 
+                          key={i}
+                          animate={{ 
+                            opacity: isActive ? [0.1, 0.8, 0.1] : 0.15,
+                            scale: isActive ? [1, 1.2, 1] : 1,
+                            backgroundColor: isActive ? ['#3b82f6', '#6366f1', '#a855f7'] : '#ffffff'
+                          }}
+                          transition={{ 
+                            duration: isActive ? 0.8 + (Math.random() * 1) : 3, 
+                            repeat: Infinity, 
+                            delay: i * 0.01 
+                          }}
+                          className="w-full h-full rounded-[1px] bg-white/20"
+                        />
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Overlay Labels */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                    <div className="flex items-center gap-2 bg-black/60 px-4 py-1.5 rounded-full backdrop-blur-xl border border-white/10 shadow-2xl">
+                      <div className={cn(
+                        "w-1.5 h-1.5 rounded-full",
+                        (isThinking || isStreaming) ? "bg-blue-500 animate-pulse" : "bg-emerald-500"
+                      )} />
+                      <p className="text-[10px] font-mono text-white font-bold uppercase tracking-[0.2em]">
+                        {isThinking ? 'TOKENIZING...' : isStreaming ? 'MAPPING VECTORS...' : 'DIM: 1024 | STEADY'}
+                      </p>
+                    </div>
+                    {(isThinking || isStreaming) && (
+                      <motion.p 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="text-[8px] font-bold text-[#6366F1] uppercase tracking-[0.4em] animate-pulse"
+                      >
+                        Calculating Semantic Proximity
+                      </motion.p>
+                    )}
+                  </div>
+
+                  {/* Scanning Effect */}
+                  {(isThinking || isStreaming) && (
+                    <motion.div 
+                      animate={{ top: ['-100%', '200%'] }}
+                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                      className="absolute left-0 right-0 h-10 bg-gradient-to-b from-transparent via-[#6366F1]/20 to-transparent pointer-events-none"
+                    />
+                  )}
+                </div>
+                <div className="mt-3 flex items-center justify-between px-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Latent Space:</span>
+                    <span className="text-[8px] font-mono text-blue-400 font-bold tracking-tighter">e5-multilingual-v3</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Compute:</span>
+                    <span className="text-[8px] font-mono text-amber-500 font-bold tracking-tighter">FP16 CUDA</span>
+                  </div>
+                </div>
+              </section>
+
+              {/* 3. Retrieved Chunks List */}
+              <section className="space-y-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <LinkIcon className="w-3.5 h-3.5 text-purple-500" />
+                    <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Retrieved Evidence</span>
+                  </div>
+                  <span className="text-[9px] font-bold text-[#6366F1] bg-[#6366F1]/10 px-2 py-0.5 rounded-full">{activeChunks.length} Chunks</span>
+                </div>
+                
+                <div className="space-y-4">
+                  {activeChunks.length === 0 ? (
+                    <div className="py-10 text-center border border-dashed border-white/5 rounded-2xl">
+                      <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest">Awaiting Analysis</p>
+                    </div>
+                  ) : (
+                    activeChunks.map((chunk, idx) => (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.1 }}
+                        key={idx} 
+                        className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-[#6366F1]/30 transition-all group"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[9px] font-bold text-[#6366F1] uppercase truncate max-w-[150px]">{chunk.sourceName}</span>
+                          <span className="text-[8px] font-mono text-white/30">SCORE: {Math.round((chunk.similarityScore || 0) * 100)}%</span>
+                        </div>
+                        <p className="text-[11px] text-white/60 leading-relaxed line-clamp-4 italic mb-3">
+                          "{chunk.text}"
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.round((chunk.similarityScore || 0) * 100)}%` }}
+                              className="h-full bg-emerald-500/50"
+                            />
+                          </div>
+                          <span className="text-[8px] font-bold text-emerald-500 uppercase">Relevant</span>
+                        </div>
+                      </motion.div>
+                    ))
+                  )}
+                </div>
+              </section>
+            </div>
+
+            {/* Sidebar Footer */}
+            <div className="p-6 border-t border-white/10 bg-black/20">
+               <div className="flex items-center gap-3 p-3 rounded-xl bg-[#6366F1]/5 border border-[#6366F1]/10">
+                  <Shield className="w-4 h-4 text-[#6366F1]" />
+                  <p className="text-[10px] text-white/40 font-medium leading-tight">All evidence is verified against the local knowledge base to prevent hallucinations.</p>
+               </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Source Selection Modal (KB) */}
       <AnimatePresence>
         {isKbOpen && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <motion.div className="bg-[#111114] border border-white/10 w-full max-w-2xl rounded-3xl p-8 space-y-6">
-               <div className="flex justify-between items-center">
-                  <h2 className="text-xl font-bold flex items-center gap-3"><Database className="w-5 h-5 text-[#6366F1]"/> Knowledge Library</h2>
-                  <button onClick={() => setIsKbOpen(false)}><X className="w-6 h-6"/></button>
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-[#111114] border border-white/10 w-full max-w-2xl rounded-3xl overflow-hidden p-8 shadow-2xl flex flex-col max-h-[85vh]"
+            >
+               <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h2 className="text-2xl font-bold">Constitutional Library</h2>
+                    <p className="text-[10px] text-white/20 font-bold uppercase tracking-[0.2em] mt-1">Select evidence for legal analysis</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => setIsIngestionModalOpen(true)}
+                      className="p-3 rounded-xl bg-[#6366F1]/10 text-[#6366F1] border border-[#6366F1]/20 hover:bg-[#6366F1]/20 transition-all"
+                      title="Add New Source"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
+                    <button onClick={() => setIsKbOpen(false)} className="p-2 hover:bg-white/5 rounded-xl text-white/20 hover:text-white transition-all">
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
                </div>
-               <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-                 {sources.map(s => (
-                   <div 
-                    key={s.id} 
-                    onClick={() => {
-                      const next = new Set(selectedSourceIds);
-                      if(next.has(s.id)) next.delete(s.id);
-                      else next.add(s.id);
-                      setSelectedSourceIds(next);
-                    }}
-                    className={cn(
-                      "p-4 rounded-xl border cursor-pointer transition-all flex items-center justify-between",
-                      selectedSourceIds.has(s.id) ? "bg-[#6366F1]/10 border-[#6366F1]/40" : "bg-white/5 border-white/5 hover:bg-white/10"
-                    )}
-                   >
-                     <div className="flex items-center gap-3">
-                        <FileText className="w-4 h-4 text-white/40" />
-                        <span className="text-sm font-medium">{s.title}</span>
-                     </div>
-                     {selectedSourceIds.has(s.id) && <div className="w-2 h-2 rounded-full bg-[#6366F1]" />}
-                   </div>
-                 ))}
+
+               {/* Search Bar */}
+               <div className="relative mb-6">
+                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                 <input 
+                   type="text" 
+                   placeholder="Search statutes, precedents, or case files..."
+                   value={sourceSearchQuery}
+                   onChange={(e) => setSourceSearchQuery(e.target.value)}
+                   className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-xs focus:outline-none focus:border-[#6366F1]/50 transition-all"
+                 />
                </div>
-               <button onClick={() => setIsKbOpen(false)} className="w-full py-4 bg-[#6366F1] text-white rounded-2xl font-bold uppercase tracking-widest text-xs">Confirm Selection</button>
+
+               <div className="flex-1 overflow-y-auto space-y-3 no-scrollbar pr-2 mb-8">
+                  {sources
+                    .filter(s => s.title.toLowerCase().includes(sourceSearchQuery.toLowerCase()))
+                    .map(source => (
+                    <button
+                      key={source.id}
+                      onClick={() => {
+                        const next = new Set(selectedSourceIds);
+                        if (next.has(source.id)) next.delete(source.id);
+                        else next.add(source.id);
+                        setSelectedSourceIds(next);
+                      }}
+                      className={cn(
+                        "w-full flex items-center justify-between p-4 rounded-2xl transition-all border text-left group",
+                        selectedSourceIds.has(source.id)
+                          ? "bg-[#6366F1]/10 border-[#6366F1]/30"
+                          : "bg-white/[0.02] border-white/5 hover:border-white/20"
+                      )}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={cn(
+                          "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+                          selectedSourceIds.has(source.id) ? "bg-[#6366F1]/20 text-[#6366F1]" : "bg-white/5 text-white/20"
+                        )}>
+                          {source.type === 'pdf' ? <FileText className="w-5 h-5" /> : <Globe className="w-5 h-5" />}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold">{source.title}</p>
+                          <p className="text-[9px] text-white/20 uppercase tracking-widest mt-0.5">{source.metadata?.court || 'General Statutes'}</p>
+                        </div>
+                      </div>
+                      {selectedSourceIds.has(source.id) && <CheckCircle2 className="w-5 h-5 text-[#6366F1]" />}
+                    </button>
+                  ))}
+               </div>
+               <div className="flex items-center gap-3">
+                 <button 
+                   onClick={() => setIsSelectedPreviewOpen(true)}
+                   className="flex-1 py-4 bg-white/5 text-white/40 hover:text-white rounded-2xl font-bold uppercase tracking-widest text-xs transition-all"
+                 >
+                   Manage Selected ({selectedSourceIds.size})
+                 </button>
+                 <button onClick={() => setIsKbOpen(false)} className="flex-[2] py-4 bg-[#6366F1] text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg shadow-[#6366F1]/20">Confirm Context</button>
+               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
+      {/* Unified Ingestion Modal */}
+      <AnimatePresence>
+        {isIngestionModalOpen && (
+          <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-[#0A0A0B] border border-white/10 w-full max-w-md rounded-3xl overflow-hidden p-8 shadow-2xl relative"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="text-xl font-bold">Add Legal Intel</h2>
+                  <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest mt-1">Select source origin</p>
+                </div>
+                <button onClick={() => { setIsIngestionModalOpen(false); setIngestionMode('options'); }} className="p-2 hover:bg-white/5 rounded-xl text-white/20 hover:text-white transition-all">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {ingestionMode === 'options' ? (
+                <div className="grid grid-cols-1 gap-3">
+                  <button
+                    onClick={() => { sourceFileInputRef.current?.click(); setIsIngestionModalOpen(false); }}
+                    className="flex items-center gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-[#6366F1]/30 transition-all group text-left"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-400 group-hover:scale-110 transition-transform">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold">Local Files</p>
+                      <p className="text-[10px] text-white/30 font-medium">Upload PDF or Image evidence</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setIngestionMode('url')}
+                    className="flex items-center gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-blue-500/30 transition-all group text-left"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                      <Globe className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold">Web Laws</p>
+                      <p className="text-[10px] text-white/30 font-medium">Ingest content from any URL</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setIngestionMode('youtube')}
+                    className="flex items-center gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-red-500/30 transition-all group text-left"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-400 group-hover:scale-110 transition-transform">
+                      <Youtube className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold">Video Transcripts</p>
+                      <p className="text-[10px] text-white/30 font-medium">Process YouTube court proceedings</p>
+                    </div>
+                  </button>
+                </div>
+              ) : ingestionMode === 'url' ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/40">Enter Web URL</label>
+                    <div className="relative">
+                      <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                      <input
+                        type="url"
+                        placeholder="https://example.com/legal-text"
+                        value={urlInput}
+                        onChange={(e) => setUrlInput(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-xs focus:outline-none focus:border-[#6366F1]/50 transition-all"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => setIngestionMode('options')} className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all">Back</button>
+                    <button
+                      onClick={async () => {
+                        if (!urlInput) return;
+                        setIsProcessingExternal(true);
+                        setIsIngestionModalOpen(false);
+                        try {
+                          await addWebsite(urlInput);
+                          setUrlInput('');
+                          const updated = await fetchSources();
+                          setSources(updated);
+                        } catch (e) {
+                          setError("Failed to ingest URL");
+                        } finally {
+                          setIsProcessingExternal(false);
+                          setIngestionMode('options');
+                        }
+                      }}
+                      className="flex-[2] py-3 bg-[#6366F1] hover:bg-[#4F46E5] rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all"
+                    >
+                      Process URL
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/40">YouTube Video Link</label>
+                    <div className="relative">
+                      <Youtube className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                      <input
+                        type="url"
+                        placeholder="https://youtube.com/watch?v=..."
+                        value={youtubeInput}
+                        onChange={(e) => setYoutubeInput(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-xs focus:outline-none focus:border-[#6366F1]/50 transition-all"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => setIngestionMode('options')} className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all">Back</button>
+                    <button
+                      onClick={async () => {
+                        if (!youtubeInput) return;
+                        setIsProcessingExternal(true);
+                        setIsIngestionModalOpen(false);
+                        try {
+                          await addYouTube(youtubeInput);
+                          setYoutubeInput('');
+                          const updated = await fetchSources();
+                          setSources(updated);
+                        } catch (e) {
+                          setError("Failed to ingest YouTube video");
+                        } finally {
+                          setIsProcessingExternal(false);
+                          setIngestionMode('options');
+                        }
+                      }}
+                      className="flex-[2] py-3 bg-red-600 hover:bg-red-700 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all"
+                    >
+                      Process Video
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Selected Sources Preview Modal */}
+      <AnimatePresence>
+        {isSelectedPreviewOpen && (
+          <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-[#0A0A0B] border border-white/10 w-full max-w-lg rounded-3xl overflow-hidden p-8 shadow-2xl relative flex flex-col max-h-[60vh]"
+            >
+              <div className="flex items-center justify-between mb-8 shrink-0">
+                <div>
+                  <h2 className="text-xl font-bold">Active Context</h2>
+                  <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest mt-1">Reviewing {selectedSourceIds.size} active sources</p>
+                </div>
+                <button onClick={() => setIsSelectedPreviewOpen(false)} className="p-2 hover:bg-white/5 rounded-xl text-white/20 hover:text-white transition-all">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar pr-2">
+                {Array.from(selectedSourceIds).map(id => {
+                  const source = sources.find(s => s.id === id);
+                  if (!source) return null;
+                  const Icon = sourceIcon(source.type);
+                  return (
+                    <div key={id} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5 group hover:border-[#6366F1]/30 transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/30">
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold truncate max-w-[240px]">{source.title}</p>
+                          <p className="text-[9px] text-white/20 uppercase tracking-widest">{source.type}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const next = new Set(selectedSourceIds);
+                          next.delete(id);
+                          setSelectedSourceIds(next);
+                        }}
+                        className="p-2 rounded-lg bg-red-500/10 text-red-500 opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-8 pt-6 border-t border-white/5 flex gap-3 shrink-0">
+                <button onClick={() => setSelectedSourceIds(new Set())} className="flex-1 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all">Clear All</button>
+                <button onClick={() => setIsSelectedPreviewOpen(false)} className="flex-1 py-3 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-lg shadow-[#6366F1]/20">Confirm Selection</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <input 
+        type="file" 
+        ref={sourceFileInputRef} 
+        className="hidden" 
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          try {
+            const newSource = await uploadPdf(file);
+            setSources(prev => [newSource, ...prev]);
+            setSelectedSourceIds(prev => new Set(prev).add(newSource.id));
+          } catch (e) {
+            setError("Upload failed");
+          }
+        }}
+      />
       {/* History Sidebar Overlay */}
       <AnimatePresence>
         {sidebarOpen && (
@@ -768,7 +1258,7 @@ export function LegalAssistant() {
               initial={{ x: -320 }}
               animate={{ x: 0 }}
               exit={{ x: -320 }}
-              className="fixed top-0 left-0 bottom-0 w-85 z-[101] bg-[#0A0A0B]/95 backdrop-blur-2xl border-r border-white/10 p-8 flex flex-col shadow-2xl overflow-hidden"
+              className="fixed top-0 left-0 bottom-0 w-80 z-[101] bg-[#0A0A0B]/95 backdrop-blur-2xl border-r border-white/10 p-8 flex flex-col shadow-2xl overflow-hidden"
             >
               {/* Beams Background for Sidebar */}
               <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40">
@@ -799,7 +1289,7 @@ export function LegalAssistant() {
                 <span className="text-[11px] font-bold uppercase tracking-widest">New Legal Session</span>
               </button>
 
-              <div className="flex-1 overflow-y-auto space-y-3 no-scrollbar pr-2">
+              <div className="flex-1 overflow-y-auto space-y-3 no-scrollbar pr-2 relative z-10">
                 {conversations.length === 0 ? (
                   <div className="py-10 text-center space-y-2">
                     <p className="text-white/20 text-xs font-bold uppercase tracking-widest">No cases yet</p>
@@ -850,6 +1340,7 @@ export function LegalAssistant() {
           </>
         )}
       </AnimatePresence>
-    </div>
+      </div>
+    </AuroraBackground>
   );
 }

@@ -583,7 +583,7 @@ export function AskAI() {
   };
 
   return (
-    <div className="h-full flex text-white relative overflow-hidden">
+    <div className="h-full flex flex-col bg-transparent relative overflow-hidden">
       {/* Main Container */}
       <div className="flex-1 flex flex-col relative z-10">
 
