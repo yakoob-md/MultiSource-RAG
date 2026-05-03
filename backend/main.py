@@ -14,6 +14,7 @@ from backend.api.image_routes import router as image_router
 from backend.api.legal_query_routes import router as legal_query_router
 from backend.api.conversations import router as conversations_router
 from backend.api.evaluation   import router as eval_router
+from backend.api.export       import router as export_router
 
 from backend.ingestion.embedder import get_model as preload_embedder
 from backend.rag.retriever import _get_reranker as preload_reranker
@@ -76,6 +77,9 @@ app.include_router(legal_query_router, tags=["legal"])   # /legal-query stays at
 
 # ── Image routes under /images prefix ────────────────────────────────────────
 app.include_router(image_router, prefix="/images", tags=["images"])
+
+# ── Export routes ────────────────────────────────────────────────────────────
+app.include_router(export_router, prefix="/export", tags=["export"])
 
 @app.get("/health")
 def health():

@@ -150,3 +150,42 @@ def build_synthesis_prompt(question: str, result: MultiSourceResult, history: li
         messages.extend(valid_history[-history_limit:])
     messages.append({"role": "user", "content": question})
     return messages
+
+def build_deep_research_prompt(question: str, result: MultiSourceResult, history: list[dict] | None, is_legal: bool = False) -> list[dict]:
+    """Highly structured prompt for the Deep Research 'Professional Memo' format."""
+    context_parts = [_format_chunk_for_prompt(i, c) for i, c in enumerate(result.all_chunks, start=1)]
+    context_block = "\n\n".join(context_parts)
+
+    memo_structure = """
+    Structure your answer as a formal RESEARCH MEMORANDUM with the following sections:
+    
+    # 📑 EXECUTIVE SUMMARY
+    [A 2-3 sentence high-level summary of the findings]
+    
+    # 🔍 DETAILED ANALYSIS
+    [A thorough, point-by-point breakdown. Cite every claim with [Source N] inline.]
+    
+    # ⚖️ LEGAL FRAMEWORK / CORE CONCEPTS
+    [List relevant statutes, sections, or technical principles identified in the sources]
+    
+    # 📜 PRECEDENTS / LANDMARK FINDINGS
+    [List any specific case law or key research studies mentioned in the sources]
+    
+    # 🎯 CONCLUSION
+    [Synthesized final conclusion and next steps/implications]
+    """
+
+    if is_legal:
+        system_prompt = f"You are a Principal Legal Research Counsel. {memo_structure}"
+    else:
+        system_prompt = f"You are a Lead Research Scientist. {memo_structure}"
+
+    messages = [
+        {"role": "system", "content": f"{system_prompt}\n\nRETRIEVED RESEARCH DATA:\n{context_block}"}
+    ]
+    
+    if history:
+        messages.extend(history[-2:]) # Keep history very short
+        
+    messages.append({"role": "user", "content": f"Final Research Query: {question}"})
+    return messages

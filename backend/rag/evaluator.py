@@ -76,10 +76,10 @@ def generate_test_questions(n: int = 15) -> list[dict]:
             {
                 "role": "system",
                 "content": (
-                    "You are a test question generator. Given a text passage, generate ONE "
-                    "specific, answerable question that can be answered from this passage. "
-                    "The question should be detailed enough to require reading the passage. "
-                    "Return ONLY the question text — no preamble, no numbering."
+                    "You are a Senior Academic Examiner. Given a text passage, generate ONE "
+                    "complex, reasoning-based question that can ONLY be answered by understanding the specific context of this passage. "
+                    "Avoid simple 'what is' questions. Aim for 'how' or 'why' or 'what are the implications of'. "
+                    "Return ONLY the question text."
                 ),
             },
             {
@@ -263,7 +263,7 @@ def run_evaluation(
         try:
             # Retrieve context
             multi_result = retriever_fn(question)
-            contexts = [c.chunk_text for c in multi_result.all_chunks[:5]]
+            contexts = [c.chunk_text for c in multi_result.all_chunks[:8]]
 
             # Generate answer
             answer = generator_fn(question, multi_result)
