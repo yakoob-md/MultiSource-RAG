@@ -9,8 +9,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from groq import Groq
 
-from backend.rag.generator import _build_messages as _build_prompt, _build_citations
+from backend.rag.generator import _build_messages_rich as _build_prompt, _build_citations
 from backend.rag.retriever import retrieve, RetrievedChunk
+from backend.rag.multi_retriever import MultiSourceResult
 from backend.config import GROQ_API_KEY, GROQ_MODEL
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,15 @@ async def query_stream(req: StreamRequest, request: Request):
                 sent_done = True
                 return
 
-            prompt_messages = _build_prompt(req.question, chunks, req.history)
+            # Wrap chunks in a MultiSourceResult for the rich prompt builder
+            multi_result = MultiSourceResult(
+                all_chunks=chunks,
+                source_groups={}, # Simple mapping if needed
+                source_count=len(set(c.source_id for c in chunks)),
+                query_intent="single_source" # Fallback intent
+            )
+
+            prompt_messages = _build_prompt(req.question, multi_result, req.history)
 
             def run_groq():
                 client = Groq(api_key=GROQ_API_KEY)

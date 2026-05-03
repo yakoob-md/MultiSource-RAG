@@ -1220,11 +1220,12 @@ export function AskAI() {
                 {Array.from(selectedSourceIds).map(id => {
                   const source = sources.find(s => s.id === id);
                   if (!source) return null;
+                  const Icon = sourceIcon(source.type);
                   return (
                     <div key={id} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5 group hover:border-[#6366F1]/30 transition-all">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/30">
-                          {source.type === 'pdf' ? <FileText className="w-4 h-4" /> : source.type === 'url' ? <Globe className="w-4 h-4" /> : <Youtube className="w-4 h-4" />}
+                          <Icon className="w-4 h-4" />
                         </div>
                         <div className="min-w-0">
                           <p className="text-xs font-bold truncate max-w-[240px]">{source.title}</p>

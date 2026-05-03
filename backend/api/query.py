@@ -244,7 +244,7 @@ def query(req: QueryRequest):
 
     try:
         is_legal = (req.llm_provider == "huggingface")
-        result = generate_multi_answer(enriched_question, multi_result, history=augmented_history, is_legal=is_legal)
+        result = generate_answer(req.question, multi_result, history=augmented_history, image_context=image_context_block, llm_provider=req.llm_provider)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
@@ -341,7 +341,7 @@ def query_stream(req: QueryRequest):
         # ── Token stream ─────────────────────────────────────────────────────
         collected = []
         try:
-            for token in generate_answer_stream(enriched_question, chunks, history=augmented_history, llm_provider=req.llm_provider):
+            for token in generate_answer_stream(req.question, multi_result, history=augmented_history, image_context=image_context_block, llm_provider=req.llm_provider):
                 collected.append(token)
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
         except Exception as e:

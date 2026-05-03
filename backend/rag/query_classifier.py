@@ -2,7 +2,7 @@ import json
 import re
 from dataclasses import dataclass
 from groq import Groq
-from backend.config import GROQ_API_KEY, GROQ_MODEL
+from backend.config import GROQ_API_KEY, GROQ_MODEL, GROQ_CLASSIFIER_MODEL
 from backend.database.connection import get_connection
 
 @dataclass
@@ -46,7 +46,7 @@ def classify_query(question: str) -> QueryAnalysis:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Query: {question}"}
             ],
-            model=GROQ_MODEL,
+            model=GROQ_CLASSIFIER_MODEL,
             max_tokens=300,
             stream=False,
             response_format={"type": "json_object"}

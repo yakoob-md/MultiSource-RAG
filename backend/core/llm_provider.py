@@ -5,7 +5,8 @@ from groq import Groq
 from backend.config import (
     GROQ_API_KEY, GROQ_MODEL, 
     HF_API_KEY, HF_LEGAL_MODEL_ID, 
-    LEGAL_MODEL_MODE, LEGAL_MODEL_PATH, BASE_MODEL_NAME
+    LEGAL_MODEL_MODE, LEGAL_MODEL_PATH, BASE_MODEL_NAME,
+    OLLAMA_BASE_URL, OLLAMA_MODEL_NAME
 )
 
 class LLMProvider:
@@ -29,12 +30,13 @@ class LLMProvider:
             from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
             from peft import PeftModel
 
-            # 4-bit config for RTX 2050
+            # 4-bit config with CPU offload for RTX 2050 (4GB VRAM)
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_use_double_quant=True,
                 bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.float16
+                bnb_4bit_compute_dtype=torch.float16,
+                llm_int8_enable_fp32_cpu_offload=True
             )
 
             try:
@@ -43,6 +45,7 @@ class LLMProvider:
                     BASE_MODEL_NAME,
                     quantization_config=bnb_config,
                     device_map="auto",
+                    torch_dtype=torch.float16,
                     trust_remote_code=True
                 )
                 
@@ -73,7 +76,7 @@ class LLMProvider:
         if not HF_API_KEY or not HF_LEGAL_MODEL_ID:
             return "Error: Hugging Face API key or Model ID not configured."
         
-        API_URL = f"https://api-inference.huggingface.co/models/{HF_LEGAL_MODEL_ID}"
+        API_URL = f"https://router.huggingface.co/hf-inference/models/{HF_LEGAL_MODEL_ID}"
         headers = {"Authorization": f"Bearer {HF_API_KEY}"}
         
         # Combine messages into a single prompt for HF (simplistic version)
@@ -130,8 +133,30 @@ class LLMProvider:
         # If mode is finetuned, use the LEGAL_MODEL_MODE from config
         if LEGAL_MODEL_MODE == "huggingface":
             return self.generate_hf(messages)
+        elif LEGAL_MODEL_MODE == "ollama":
+            return self.generate_ollama(messages)
         else:
             return self.generate_local(messages)
+
+    def generate_ollama(self, messages: List[Dict]) -> str:
+        """Generate response using Ollama API."""
+        try:
+            payload = {
+                "model": OLLAMA_MODEL_NAME,
+                "messages": messages,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": 512
+                }
+            }
+            response = requests.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload, timeout=120)
+            if response.status_code == 200:
+                return response.json().get("message", {}).get("content", "Error: No content in Ollama response.")
+            else:
+                return f"Error from Ollama API: {response.text}"
+        except Exception as e:
+            return f"Failed to connect to Ollama: {str(e)}. Make sure Ollama is running."
 
 # Singleton instance
 llm_provider = LLMProvider()

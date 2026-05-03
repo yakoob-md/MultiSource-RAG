@@ -49,18 +49,23 @@ RERANKER_FALLBACK_TOP_N = 2
 # Load the key from the environment. Will raise an error later if blank.
 GROQ_API_KEY    = os.getenv("GROQ_API_KEY") 
 GROQ_MODEL      = "llama-3.3-70b-versatile"
+GROQ_CLASSIFIER_MODEL = "llama-3.1-8b-instant"  # Faster, higher rate limits for classification
 GROQ_TIMEOUT    = 30
 
 # ── Fine-Tuned Model (Hybrid: Local/HF) ──────────────────────────────────────
 # Set to "local" to run on your PC, or "huggingface" to use cloud inference
-LEGAL_MODEL_MODE    = os.getenv("LEGAL_MODEL_MODE", "local") 
+LEGAL_MODEL_MODE    = "huggingface" 
 LEGAL_MODEL_PATH    = MODELS_DIR / "legal_model_lora"
 BASE_MODEL_NAME     = "unsloth/Meta-Llama-3.1-8B-bnb-4bit"
 
 # Hugging Face Inference API (for legal or image models)
 HF_API_KEY          = os.getenv("HF_API_KEY")
-HF_LEGAL_MODEL_ID   = os.getenv("HF_LEGAL_MODEL_ID") # e.g., "username/legal_model"
+HF_LEGAL_MODEL_ID   = "yakub-md/legal-rag-final"
 HF_IMAGE_MODEL_ID   = "Salesforce/blip-image-captioning-large"
+
+# ── Ollama (Local API) ───────────────────────────────────────────────────────
+OLLAMA_BASE_URL      = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL_NAME    = os.getenv("OLLAMA_MODEL_NAME", "legal-model")
 
 def verify_config():
     missing = []

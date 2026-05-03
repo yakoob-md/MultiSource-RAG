@@ -71,113 +71,23 @@ def _build_reference(chunk: RetrievedChunk) -> str:
     return ""
 
 
-def _build_messages(
+from backend.rag.prompts import build_single_source_prompt, build_comparison_prompt, build_synthesis_prompt
+from backend.rag.multi_retriever import MultiSourceResult
+
+def _build_messages_rich(
     question     : str,
-    chunks       : list[RetrievedChunk],
+    result       : MultiSourceResult,
     history      : list[ChatMessage] | None = None,
     image_context: str | None = None,
     is_legal     : bool = False,
 ) -> list[dict]:
-    """
-    Build the full messages array sent to Groq's chat completions API.
-
-    Structure sent to Groq:
-        [
-          {"role": "system",    "content": <RAG instructions + retrieved context>},
-          {"role": "user",      "content": <history turn 1 question>},
-          {"role": "assistant", "content": <history turn 1 answer>},
-          {"role": "user",      "content": <history turn 2 question>},
-          {"role": "assistant", "content": <history turn 2 answer>},
-          {"role": "user",      "content": <current question>},   ← always last
-        ]
-
-    Why put context in the system message?
-        The system message is read first and governs the entire conversation.
-        Putting retrieved context here means every turn — including follow-ups
-        like "Can you expand on that?" — has access to the same source chunks.
-
-    Why include chat history?
-        Without history, follow-up questions like "What did you mean by that?"
-        have no referent. The model needs prior turns to resolve references.
-
-    History cap (MAX_HISTORY_TURNS = 3):
-        We keep the last 3 user+assistant pairs (= 6 messages).
-        This keeps the context window usage predictable and well within
-        llama3-8b-8192's 8192 token limit. Older turns are dropped.
-
-    Args:
-        question : the current user question
-        chunks   : retrieved chunks for this turn
-        history  : previous {"role", "content"} turns, oldest first. Can be None.
-
-    Returns:
-        list of message dicts ready for Groq chat completions
-    """
-    MAX_HISTORY_TURNS = 6   # last 6 turns = last 12 messages for better context
-
-    # ── Build context block ───────────────────────────────────────────────────
-    context_parts = []
-    for i, chunk in enumerate(chunks, start=1):
-        ref    = _build_reference(chunk)
-        header = f"[{i}] SOURCE: {chunk.source_title}"
-        if ref:
-            header += f" | {ref}"
-        context_parts.append(f"{header}\n{chunk.chunk_text}")
-
-    context = "\n\n---\n\n".join(context_parts)
-
-    # ── System message: instructions + context ────────────────────────────────
-    if is_legal:
-        system_content = f"""You are a legal information assistant for Indian law. Answer using ONLY the provided context.
-
-RULES:
-1. Use the retrieved context as your ONLY source of truth.
-2. Provide exact quotes for legal basis when possible.
-3. Structure: ANSWER, LEGAL BASIS, CITATIONS (Document | Section/Para).
-4. Never give legal advice. State only what the law says.
-5. Use conversation history to resolve pronouns ("it", "that case").
-
-RETRIEVED CONTEXT:
-{context}"""
+    """Select the best prompt builder based on query intent."""
+    if result.query_intent == "comparison":
+        return build_comparison_prompt(question, result, history, image_context, is_legal=is_legal)
+    elif result.query_intent == "synthesis":
+        return build_synthesis_prompt(question, result, history, image_context, is_legal=is_legal)
     else:
-        system_content = f"""You are an expert research assistant with deep knowledge of the uploaded documents.
-
-Your job is to give DETAILED, ACCURATE, WELL-CITED answers based ONLY on the retrieved context below.
-
-RULES:
-1. Use the retrieved context as your ONLY source of truth.
-2. Cite every claim with [Source N] inline — e.g. "According to [Source 1]..."
-3. Give a thorough, structured answer — use headings, bullet points, and numbered lists where appropriate.
-4. If the question has multiple parts, answer each part separately.
-5. Quote directly from the source text when it is relevant.
-6. If the answer is not in the context, say: "The retrieved documents do not contain information about this."
-7. Use conversation history to resolve follow-up questions and pronouns ("it", "that case", etc.).
-
-RETRIEVED CONTEXT:
-{context}"""
-
-    if image_context:
-        system_content = f"{system_content}\n\n{image_context}"
-
-    messages: list[dict] = [
-        {"role": "system", "content": system_content}
-    ]
-
-    # ── Append capped chat history ────────────────────────────────────────────
-    if history:
-        # Each turn = 1 user msg + 1 assistant msg = 2 entries
-        recent = history[-(MAX_HISTORY_TURNS * 2):]
-        for msg in recent:
-            if msg.get("role") in ("user", "assistant") and msg.get("content"):
-                messages.append({
-                    "role"   : msg["role"],
-                    "content": str(msg["content"]),
-                })
-
-    # ── Current question is always the final user message ────────────────────
-    messages.append({"role": "user", "content": question})
-
-    return messages
+        return build_single_source_prompt(question, result, history, image_context, is_legal=is_legal)
 
 
 def _get_groq_client() -> Groq:
@@ -256,7 +166,7 @@ def _build_citations(chunks: list[RetrievedChunk]) -> list[Citation]:
 
 def generate_answer_stream(
     question     : str,
-    chunks       : list[RetrievedChunk],
+    multi_result : MultiSourceResult,
     history      : list[ChatMessage] | None = None,
     image_context: str | None = None,
     llm_provider : str | None = "groq",
@@ -275,12 +185,12 @@ def generate_answer_stream(
     Yields:
         str tokens (partial answer text)
     """
-    if not chunks:
+    if not multi_result.all_chunks:
         yield "I don't have any relevant information to answer this question. Please upload some documents first."
         return
 
     is_legal = (llm_provider == "huggingface")
-    messages = _build_messages(question, chunks, history, image_context=image_context, is_legal=is_legal)
+    messages = _build_messages_rich(question, multi_result, history, image_context=image_context, is_legal=is_legal)
     print(f"[Generator] Streaming | model={GROQ_MODEL} | "
           f"history_turns={len(history) if history else 0} | "
           f"total_messages={len(messages)}")
@@ -355,7 +265,7 @@ def generate_answer_stream(
 
 def generate_answer(
     question     : str,
-    chunks       : list[RetrievedChunk],
+    multi_result : MultiSourceResult,
     history      : list[ChatMessage] | None = None,
     image_context: str | None = None,
     llm_provider : str | None = "groq",
@@ -374,7 +284,7 @@ def generate_answer(
     Returns:
         GeneratedAnswer with answer text, citations, and chunks
     """
-    if not chunks:
+    if not multi_result.all_chunks:
         return GeneratedAnswer(
             answer    = "I don't have any relevant information to answer this question. Please upload some documents first.",
             citations = [],
@@ -383,7 +293,7 @@ def generate_answer(
 
     # ── Step 1: Build messages with history ───────────────────────────────────
     is_legal = (llm_provider == "huggingface")
-    messages = _build_messages(question, chunks, history, image_context=image_context, is_legal=is_legal)
+    messages = _build_messages_rich(question, multi_result, history, image_context=image_context, is_legal=is_legal)
     print(f"[Generator] Sending | model={GROQ_MODEL} | "
           f"history_turns={len(history) if history else 0} | "
           f"total_messages={len(messages)}")
@@ -419,10 +329,10 @@ def generate_answer(
         raise RuntimeError(f"Groq API error: {e}") from e
 
     # ── Step 3: Build citations ───────────────────────────────────────────────
-    citations = _build_citations(chunks)
+    citations = _build_citations(multi_result.all_chunks)
 
     return GeneratedAnswer(
         answer    = answer,
         citations = citations,
-        chunks    = chunks
+        chunks    = multi_result.all_chunks
     )
