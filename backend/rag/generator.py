@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Generator
 from backend.config import GROQ_API_KEY, GROQ_MODEL, GROQ_TIMEOUT, HF_API_KEY, HF_LEGAL_MODEL_ID
 from backend.rag.retriever import RetrievedChunk
+from backend.core.llm_provider import llm_provider
 
 
 # ── Chat history type ─────────────────────────────────────────────────────────
@@ -104,37 +105,10 @@ def _get_groq_client() -> Groq:
     return Groq(api_key=GROQ_API_KEY)
 
 
-def _call_hf_api(messages: list[dict]) -> str:
-    """Call Hugging Face Inference API for the fine-tuned model."""
-    if not HF_API_KEY or not HF_LEGAL_MODEL_ID:
-        raise ValueError("HF_API_KEY or HF_LEGAL_MODEL_ID not set in config.")
-        
-    api_url = f"https://api-inference.huggingface.co/models/{HF_LEGAL_MODEL_ID}"
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-    
-    # Convert chat history to a single string prompt (HF Inference API often expects string inputs for causal LM)
-    # Basic chat template approximation
-    prompt = ""
-    for m in messages:
-        if m["role"] == "system":
-            prompt += f"<<SYS>>\n{m['content']}\n<</SYS>>\n\n"
-        elif m["role"] == "user":
-            prompt += f"[INST] {m['content']} [/INST] "
-        elif m["role"] == "assistant":
-            prompt += f"{m['content']} </s><s>"
-            
-    response = requests.post(api_url, headers=headers, json={
-        "inputs": prompt,
-        "parameters": {"max_new_tokens": 1024, "temperature": 0.3, "return_full_text": False}
-    }, timeout=GROQ_TIMEOUT)
-    
-    if response.status_code == 200:
-        res = response.json()
-        if isinstance(res, list) and len(res) > 0 and "generated_text" in res[0]:
-            return res[0]["generated_text"].strip()
-        return str(res)
-    else:
-        raise RuntimeError(f"HF API Error {response.status_code}: {response.text}")
+def _call_provider(messages: list[dict], llm_provider_name: str | None) -> str:
+    """Call the centralized LLM provider."""
+    mode = "finetuned" if llm_provider_name == "huggingface" else "base"
+    return llm_provider.generate(messages, mode=mode)
 
 
 def _build_citations(chunks: list[RetrievedChunk]) -> list[Citation]:
@@ -169,7 +143,7 @@ def generate_answer_stream(
     multi_result : MultiSourceResult,
     history      : list[ChatMessage] | None = None,
     image_context: str | None = None,
-    llm_provider : str | None = "groq",
+    provider_name: str | None = "groq",
 ) -> Generator[str, None, None]:
     """
     Streaming answer generation with chat history support.
@@ -189,76 +163,37 @@ def generate_answer_stream(
         yield "I don't have any relevant information to answer this question. Please upload some documents first."
         return
 
-    is_legal = (llm_provider == "huggingface")
+    is_legal = (provider_name == "huggingface")
     messages = _build_messages_rich(question, multi_result, history, image_context=image_context, is_legal=is_legal)
-    print(f"[Generator] Streaming | model={GROQ_MODEL} | "
-          f"history_turns={len(history) if history else 0} | "
-          f"total_messages={len(messages)}")
+    
+    # ── Option 1: Groq (Native Streaming) ─────────────────────────────────────
+    if provider_name != "huggingface":
+        client = _get_groq_client()
+        stream = client.chat.completions.create(
+            model    = GROQ_MODEL,
+            messages = messages,
+            stream   = True,
+            timeout  = GROQ_TIMEOUT,
+        )
+        for chunk_response in stream:
+            token = chunk_response.choices[0].delta.content
+            if token is not None:
+                yield token
+        return
 
-    if llm_provider == "huggingface":
-        print(f"[Generator] Streaming from HF API: {HF_LEGAL_MODEL_ID}")
-        # HF Inference API supports streaming via SSE if we pass stream: true
-        api_url = f"https://api-inference.huggingface.co/models/{HF_LEGAL_MODEL_ID}"
-        headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-        
-        # Approximate prompt (same as _call_hf_api)
-        prompt = ""
-        for m in messages:
-            if m["role"] == "system":
-                prompt += f"<<SYS>>\n{m['content']}\n<</SYS>>\n\n"
-            elif m["role"] == "user":
-                prompt += f"[INST] {m['content']} [/INST] "
-            elif m["role"] == "assistant":
-                prompt += f"{m['content']} </s><s>"
-
-        try:
-            import json
-            response = requests.post(api_url, headers=headers, json={
-                "inputs": prompt,
-                "parameters": {"max_new_tokens": 1024, "temperature": 0.3, "return_full_text": False},
-                "stream": True
-            }, timeout=GROQ_TIMEOUT, stream=True)
-
-            if response.status_code != 200:
-                yield f"Error from HF API ({response.status_code}): {response.text}"
-                return
-
-            for line in response.iter_lines():
-                if line:
-                    decoded = line.decode('utf-8')
-                    if decoded.startswith('data:'):
-                        try:
-                            data = json.loads(decoded[5:])
-                            token = data.get("token", {}).get("text", "")
-                            if token:
-                                yield token
-                        except:
-                            continue
-            return
-        except Exception as e:
-            print(f"[Generator] HF Stream Error: {e}")
-            # Fallback to non-stream if stream fails
-            answer = _call_hf_api(messages)
-            # Simulate streaming for fallback
+    # ── Option 2: Fine-tuned (Kaggle/Local) ───────────────────────────────────
+    # We use the centralized provider. Since it's currently non-streaming,
+    # we simulate streaming for a better UI experience.
+    try:
+        answer = llm_provider.generate(messages, mode="finetuned")
+        words = answer.split(" ")
+        for i, word in enumerate(words):
+            yield word + (" " if i < len(words) - 1 else "")
+            # Micro-sleep to prevent UI from freezing
             import time
-            for word in answer.split(" "):
-                yield word + " "
-                time.sleep(0.02)
-            return
-
-    client = _get_groq_client()
-
-    stream = client.chat.completions.create(
-        model    = GROQ_MODEL,
-        messages = messages,
-        stream   = True,
-        timeout  = GROQ_TIMEOUT,
-    )
-
-    for chunk_response in stream:
-        token = chunk_response.choices[0].delta.content
-        if token is not None:
-            yield token
+            time.sleep(0.01)
+    except Exception as e:
+        yield f"Generation error: {str(e)}"
 
 
 # ── Non-streaming path ────────────────────────────────────────────────────────
@@ -268,7 +203,7 @@ def generate_answer(
     multi_result : MultiSourceResult,
     history      : list[ChatMessage] | None = None,
     image_context: str | None = None,
-    llm_provider : str | None = "groq",
+    provider_name: str | None = "groq",
 ) -> GeneratedAnswer:
     """
     Non-streaming answer generation with chat history support.
@@ -292,35 +227,16 @@ def generate_answer(
         )
 
     # ── Step 1: Build messages with history ───────────────────────────────────
-    is_legal = (llm_provider == "huggingface")
+    is_legal = (provider_name == "huggingface")
     messages = _build_messages_rich(question, multi_result, history, image_context=image_context, is_legal=is_legal)
     print(f"[Generator] Sending | model={GROQ_MODEL} | "
           f"history_turns={len(history) if history else 0} | "
           f"total_messages={len(messages)}")
 
-    # ── Step 2: Call Groq or HF ────────────────────────────────────────────────
+    # ── Step 2: Call Centralized Provider ──────────────────────────────────────
     try:
-        if llm_provider == "huggingface":
-            print(f"[Generator] Sending to HF API: {HF_LEGAL_MODEL_ID}")
-            answer = _call_hf_api(messages)
-        else:
-            client = _get_groq_client()
-
-            stream = client.chat.completions.create(
-                model    = GROQ_MODEL,
-                messages = messages,
-                stream   = True,
-                timeout  = GROQ_TIMEOUT,
-            )
-
-            tokens = []
-            for chunk_response in stream:
-                token = chunk_response.choices[0].delta.content
-                if token is not None:
-                    tokens.append(token)
-
-            answer = "".join(tokens).strip()
-            
+        mode = "finetuned" if provider_name == "huggingface" else "base"
+        answer = llm_provider.generate(messages, mode=mode)
         print(f"[Generator] Done | {len(answer)} chars")
 
     except ValueError:

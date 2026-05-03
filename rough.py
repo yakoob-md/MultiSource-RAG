@@ -1,221 +1,110 @@
-"use client";
+from unsloth import FastLanguageModel
+import torch
+import os
+from transformers import TrainingArguments, TextStreamer
+from trl import SFTTrainer
+from datasets import load_dataset
 
-import { useEffect, useRef } from "react";
-import { motion } from "motion/react";
-import { cn } from "@/lib/utils";
+# 1. Configuration
+model_name = "unsloth/Meta-Llama-3.1-8B-bnb-4bit" # 4-bit quantization for T4 GPU
+max_seq_length = 2048 # Supports RoPE Scaling internally
+load_in_4bit = True
+dataset_file = "/kaggle/input/datasets/yakoob2345/legal-final/legal_rag_dataset_final.jsonl" # Path in Kaggle
 
-interface AnimatedGradientBackgroundProps {
-    className?: string;
-    children?: React.ReactNode;
-    intensity?: "subtle" | "medium" | "strong";
-}
+# 2. Load Model & Tokenizer
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name = model_name,
+    max_seq_length = max_seq_length,
+    load_in_4bit = load_in_4bit,
+)
 
-interface Beam {
-    x: number;
-    y: number;
-    width: number;
-    length: number;
-    angle: number;
-    speed: number;
-    opacity: number;
-    hue: number;
-    pulse: number;
-    pulseSpeed: number;
-}
+# 3. Add LoRA Adapters
+model = FastLanguageModel.get_peft_model(
+    model,
+    r = 16, # Rank
+    target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
+                      "gate_proj", "up_proj", "down_proj",],
+    lora_alpha = 16,
+    lora_dropout = 0, # Optimized for 0
+    bias = "none",    # Optimized for "none"
+    use_gradient_checkpointing = "unsloth", # Use Unsloth's optimized version
+    random_state = 3407,
+)
 
-function createBeam(width: number, height: number): Beam {
-    const angle = -35 + Math.random() * 10;
-    return {
-        x: Math.random() * width * 1.5 - width * 0.25,
-        y: Math.random() * height * 1.5 - height * 0.25,
-        width: 30 + Math.random() * 60,
-        length: height * 2.5,
-        angle: angle,
-        speed: 0.6 + Math.random() * 1.2,
-        opacity: 0.12 + Math.random() * 0.16,
-        hue: 190 + Math.random() * 70,
-        pulse: Math.random() * Math.PI * 2,
-        pulseSpeed: 0.02 + Math.random() * 0.03,
-    };
-}
+# 4. Data Formatting
+# This prompt matches the instruction/input/output structure of your JSONL
+prompt_template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
 
-export function BeamsBackground({
-    className,
-    intensity = "strong",
-}: AnimatedGradientBackgroundProps) {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const beamsRef = useRef<Beam[]>([]);
-    const animationFrameRef = useRef<number>(0);
-    const MINIMUM_BEAMS = 20;
+### Instruction:
+{}
 
-    const opacityMap = {
-        subtle: 0.7,
-        medium: 0.85,
-        strong: 1,
-    };
+### Input:
+{}
 
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
+### Response:
+{}"""
 
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
+EOS_TOKEN = tokenizer.eos_token # Must add EOS_TOKEN
 
-        const updateCanvasSize = () => {
-            const dpr = window.devicePixelRatio || 1;
-            canvas.width = window.innerWidth * dpr;
-            canvas.height = window.innerHeight * dpr;
-            canvas.style.width = `${window.innerWidth}px`;
-            canvas.style.height = `${window.innerHeight}px`;
-            ctx.scale(dpr, dpr);
+def formatting_prompts_func(examples):
+    instructions = examples["instruction"]
+    inputs       = examples["input"]
+    outputs      = examples["output"]
+    texts = []
+    for instruction, input, output in zip(instructions, inputs, outputs):
+        # Must add EOS_TOKEN, otherwise generation will go on forever!
+        text = prompt_template.format(instruction, input, output) + EOS_TOKEN
+        texts.append(text)
+    return { "text" : texts, }
 
-            const totalBeams = MINIMUM_BEAMS * 1.5;
-            beamsRef.current = Array.from({ length: totalBeams }, () =>
-                createBeam(canvas.width, canvas.height)
-            );
-        };
+from trl import SFTTrainer, SFTConfig
 
-        updateCanvasSize();
-        window.addEventListener("resize", updateCanvasSize);
+# Train/Validation Split
+dataset = load_dataset("json", data_files=dataset_file)["train"]
+dataset = dataset.train_test_split(test_size=0.1)
 
-        function resetBeam(beam: Beam, index: number, totalBeams: number) {
-            if (!canvas) return beam;
-            
-            const column = index % 3;
-            const spacing = canvas.width / 3;
+train_dataset = dataset["train"].map(formatting_prompts_func, batched=True)
+eval_dataset  = dataset["test"].map(formatting_prompts_func, batched=True)
 
-            beam.y = canvas.height + 100;
-            beam.x =
-                column * spacing +
-                spacing / 2 +
-                (Math.random() - 0.5) * spacing * 0.5;
-            beam.width = 100 + Math.random() * 100;
-            beam.speed = 0.5 + Math.random() * 0.4;
-            beam.hue = 190 + (index * 70) / totalBeams;
-            beam.opacity = 0.2 + Math.random() * 0.1;
-            return beam;
-        }
+trainer = SFTTrainer(
+    model=model,
+    tokenizer=tokenizer,
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
+    dataset_text_field="text",
+    max_seq_length=max_seq_length,
+    dataset_num_proc=2,
+    packing=True,                 # 🔥 SPEED BOOST
+  args=SFTConfig(
+    per_device_train_batch_size=2,
+    gradient_accumulation_steps=4,
+    warmup_steps=20,
+    max_steps=400,
+    learning_rate=2e-5,
+    fp16=not torch.cuda.is_bf16_supported(),
+    bf16=torch.cuda.is_bf16_supported(),
+    logging_steps=10,
+    eval_strategy="steps",
+    eval_steps=20,
+    save_steps=40,   # ✅ FIXED
+    save_total_limit=2,
+    load_best_model_at_end=True,
+    optim="adamw_8bit",
+    weight_decay=0.01,
+    lr_scheduler_type="cosine",
+    seed=3407,
+    output_dir="outputs",
+    report_to="none",
+    logging_first_step=True,
+    gradient_checkpointing_kwargs={"use_reentrant": False},
+    ),
+)
 
-        function drawBeam(ctx: CanvasRenderingContext2D, beam: Beam) {
-            ctx.save();
-            ctx.translate(beam.x, beam.y);
-            ctx.rotate((beam.angle * Math.PI) / 180);
+checkpoint_path = "/kaggle/input/datasets/yakoob2345/checkpoint-data/checkpoint-280"
+# 6. Train!
+trainer.train(resume_from_checkpoint=checkpoint_path)
 
-            // Calculate pulsing opacity
-            const pulsingOpacity =
-                beam.opacity *
-                (0.8 + Math.sin(beam.pulse) * 0.2) *
-                opacityMap[intensity];
-
-            const gradient = ctx.createLinearGradient(0, 0, 0, beam.length);
-
-            // Enhanced gradient with multiple color stops
-            gradient.addColorStop(0, `hsla(${beam.hue}, 85%, 65%, 0)`);
-            gradient.addColorStop(
-                0.1,
-                `hsla(${beam.hue}, 85%, 65%, ${pulsingOpacity * 0.5})`
-            );
-            gradient.addColorStop(
-                0.4,
-                `hsla(${beam.hue}, 85%, 65%, ${pulsingOpacity})`
-            );
-            gradient.addColorStop(
-                0.6,
-                `hsla(${beam.hue}, 85%, 65%, ${pulsingOpacity})`
-            );
-            gradient.addColorStop(
-                0.9,
-                `hsla(${beam.hue}, 85%, 65%, ${pulsingOpacity * 0.5})`
-            );
-            gradient.addColorStop(1, `hsla(${beam.hue}, 85%, 65%, 0)`);
-
-            ctx.fillStyle = gradient;
-            ctx.fillRect(-beam.width / 2, 0, beam.width, beam.length);
-            ctx.restore();
-        }
-
-        function animate() {
-            if (!canvas || !ctx) return;
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.filter = "blur(35px)";
-
-            const totalBeams = beamsRef.current.length;
-            beamsRef.current.forEach((beam, index) => {
-                beam.y -= beam.speed;
-                beam.pulse += beam.pulseSpeed;
-
-                // Reset beam when it goes off screen
-                if (beam.y + beam.length < -100) {
-                    resetBeam(beam, index, totalBeams);
-                }
-
-                drawBeam(ctx, beam);
-            });
-
-            animationFrameRef.current = requestAnimationFrame(animate);
-        }
-
-        animate();
-
-        return () => {
-            window.removeEventListener("resize", updateCanvasSize);
-            if (animationFrameRef.current) {
-                cancelAnimationFrame(animationFrameRef.current);
-            }
-        };
-    }, [intensity]);
-
-    return (
-        <div
-            className={cn(
-                "relative min-h-screen w-full overflow-hidden bg-neutral-950",
-                className
-            )}
-        >
-            <canvas
-                ref={canvasRef}
-                className="absolute inset-0"
-                style={{ filter: "blur(15px)" }}
-            />
-
-            <motion.div
-                className="absolute inset-0 bg-neutral-950/5"
-                animate={{
-                    opacity: [0.05, 0.15, 0.05],
-                }}
-                transition={{
-                    duration: 10,
-                    ease: "easeInOut",
-                    repeat: Number.POSITIVE_INFINITY,
-                }}
-                style={{
-                    backdropFilter: "blur(50px)",
-                }}
-            />
-
-            <div className="relative z-10 flex h-screen w-full items-center justify-center">
-                <div className="flex flex-col items-center justify-center gap-6 px-4 text-center">
-                    <motion.h1
-                        className="text-6xl md:text-7xl lg:text-8xl font-semibold text-white tracking-tighter"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.8 }}
-                    >
-                        Beams
-                        <br />
-                        Background
-                    </motion.h1>
-                    <motion.p
-                        className="text-lg md:text-2xl lg:text-3xl text-white/70 tracking-tighter"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.8 }}
-                    >
-                        For your pleasure
-                    </motion.p>
-                </div>
-            </div>
-        </div>
-    );
-}
+# 7. Save Model
+model.save_pretrained("legal_model_lora") # Local saving
+tokenizer.save_pretrained("legal_model_lora")
+# model.push_to_hub("your_username/legal_rag_llama3") # Uncomment to upload to HuggingFace

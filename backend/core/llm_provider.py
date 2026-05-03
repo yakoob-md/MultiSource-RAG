@@ -6,7 +6,8 @@ from backend.config import (
     GROQ_API_KEY, GROQ_MODEL, 
     HF_API_KEY, HF_LEGAL_MODEL_ID, 
     LEGAL_MODEL_MODE, LEGAL_MODEL_PATH, BASE_MODEL_NAME,
-    OLLAMA_BASE_URL, OLLAMA_MODEL_NAME
+    OLLAMA_BASE_URL, OLLAMA_MODEL_NAME,
+    KAGGLE_BRIDGE_URL
 )
 
 class LLMProvider:
@@ -125,18 +126,62 @@ class LLMProvider:
     def generate(self, messages: List[Dict], mode: str = "base") -> str:
         """
         Main entry point for generation.
-        mode: "base" (Groq), "finetuned" (Local or HF depending on config)
+        mode: "base" (Groq), "finetuned" (Local, HF, or Kaggle depending on config)
         """
         if mode == "base":
             return self.generate_groq(messages)
         
-        # If mode is finetuned, use the LEGAL_MODEL_MODE from config
+        # If Kaggle bridge is configured and we are in finetuned mode, use it
+        if KAGGLE_BRIDGE_URL and KAGGLE_BRIDGE_URL.strip():
+            return self.generate_kaggle(messages)
+            
+        # Fallback to other modes
         if LEGAL_MODEL_MODE == "huggingface":
             return self.generate_hf(messages)
         elif LEGAL_MODEL_MODE == "ollama":
             return self.generate_ollama(messages)
         else:
             return self.generate_local(messages)
+
+    def generate_kaggle(self, messages: List[Dict]) -> str:
+        """Generate response using Kaggle Bridge (Remote API)."""
+        try:
+            # Reconstruct the prompt for the Kaggle server
+            system_msg = next((m['content'] for m in messages if m['role'] == 'system'), "")
+            user_msg = next((m['content'] for m in messages if m['role'] == 'user'), "")
+            
+            prompt = f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+
+### Instruction:
+{system_msg}
+
+### Input:
+{user_msg}
+
+### Response:
+"""
+            payload = {"prompt": prompt}
+            url = f"{KAGGLE_BRIDGE_URL.rstrip('/')}/generate"
+            print(f"[LLMProvider] Sending request to Kaggle Bridge: {url}")
+            response = requests.post(url, json=payload, timeout=60)
+            
+            if response.status_code == 200:
+                full_result = response.json().get("answer", "")
+                print(f"[LLMProvider] Kaggle returned {len(full_result)} chars")
+                
+                if not full_result.strip():
+                    return "Error: Kaggle returned an empty answer. Try reducing the number of sources or increasing max_seq_length in your Kaggle script."
+                
+                # If the Kaggle script didn't already split it, do it here
+                if "### Response:" in full_result:
+                    return full_result.split("### Response:")[-1].strip()
+                return full_result.strip()
+            else:
+                print(f"[LLMProvider] Kaggle Bridge Error: {response.status_code} - {response.text}")
+                return f"Error from Kaggle Bridge (Status {response.status_code}): {response.text}"
+        except Exception as e:
+            print(f"[LLMProvider] Kaggle Bridge Exception: {str(e)}")
+            return f"Failed to connect to Kaggle Bridge: {str(e)}"
 
     def generate_ollama(self, messages: List[Dict]) -> str:
         """Generate response using Ollama API."""

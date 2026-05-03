@@ -41,7 +41,7 @@ FAISS_IDMAP_PATH  = FAISS_DIR / "id_map.json"
 # -12.0 is a safe floor — anything below this is genuinely unrelated noise.
 # Previous value of -5.0 was killing valid cryptography/technical content.
 RERANKER_SCORE_THRESHOLD = -12.0  # drop chunks scoring below this
-TOP_K = 8
+TOP_K = 4
 # If a source returns 0 chunks after threshold, take this many anyway (best-effort)
 RERANKER_FALLBACK_TOP_N = 2
 
@@ -66,6 +66,9 @@ HF_IMAGE_MODEL_ID   = "Salesforce/blip-image-captioning-large"
 # ── Ollama (Local API) ───────────────────────────────────────────────────────
 OLLAMA_BASE_URL      = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL_NAME    = os.getenv("OLLAMA_MODEL_NAME", "legal-model")
+
+# ── Kaggle Bridge (Remote GPU) ───────────────────────────────────────────────
+KAGGLE_BRIDGE_URL    = os.getenv("KAGGLE_BRIDGE_URL", "https://promptly-nephew-draw.ngrok-free.dev")
 
 def verify_config():
     missing = []
