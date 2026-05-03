@@ -4,7 +4,7 @@ import {
   Plus, MessageSquare, Trash2, X,
   ChevronLeft, Paperclip, Image as ImageIcon,
   Database, Upload, Link as LinkIcon, Send as SendIcon, X as XIcon, Sparkles, Clock, Lock, History,
-  Search, Zap, Gavel
+  Search, Zap, Gavel, Brain
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router';
@@ -249,6 +249,8 @@ export function AskAI() {
   const [llmProvider, setLlmProvider] = useState<string>(() => {
     return localStorage.getItem('intellex-llm-provider') || 'groq';
   });
+  const [agenticMode, setAgenticMode] = useState<boolean>(() => localStorage.getItem('intellex-agentic-mode') === 'true');
+  const [agentStatus, setAgentStatus] = useState<string[]>([]);
 
   // ── Image Upload state ─────────────────────────────────────────────────────
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
@@ -474,6 +476,7 @@ export function AskAI() {
     };
 
     setMessages(prev => [...prev, userMsg]);
+    setAgentStatus([]);
     setIsThinking(true);
     setIsStreaming(true);
     setStreamingAnswer('');
@@ -520,7 +523,16 @@ export function AskAI() {
         (err) => { throw err; },
         activeImageId || undefined,
         true,
-        llmProvider
+        llmProvider,
+        false,
+        null,
+        agenticMode,
+        (status) => {
+          setAgentStatus(prev => {
+            if (prev.includes(status.message)) return prev;
+            return [...prev, status.message];
+          });
+        }
       );
 
       removeImage();
@@ -596,6 +608,24 @@ export function AskAI() {
               </div>
             </div>
           ))}
+
+          {/* Agent Status Display */}
+          {(isThinking || isStreaming) && agentStatus.length > 0 && (
+            <div className="mb-4 p-4 rounded-2xl bg-[#A855F7]/5 border border-[#A855F7]/10 animate-in fade-in slide-in-from-bottom-2 duration-500 w-fit">
+              <div className="flex items-center gap-2 mb-3">
+                <Brain className="w-3.5 h-3.5 text-[#A855F7] animate-pulse" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#A855F7]">Research Pipeline</span>
+              </div>
+              <div className="space-y-2">
+                {agentStatus.map((status, idx) => (
+                  <div key={idx} className="flex items-start gap-2 text-[11px] text-white/50 font-mono">
+                    <span className="text-[#A855F7]/50">›</span>
+                    <span>{status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {isThinking && (
             <div className="flex items-center gap-3 text-white/40 p-4 rounded-2xl bg-white/5 w-fit">
@@ -837,6 +867,20 @@ export function AskAI() {
                         <span className="text-[9px] font-bold text-[#6366F1] uppercase">{selectedSourceIds.size} Selected</span>
                       </button>
                     )}
+
+                    {/* Deep Research Toggle */}
+                    <button
+                      onClick={() => setAgenticMode(!agenticMode)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all ${
+                        agenticMode 
+                          ? 'bg-purple-500/10 text-purple-400 border-purple-500/30 shadow-[0_0_10px_rgba(168,85,247,0.1)]' 
+                          : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'
+                      }`}
+                      title="Enable Agentic Multi-Stage Reasoning"
+                    >
+                      <Brain className={`w-3.5 h-3.5 ${agenticMode ? 'animate-pulse' : ''}`} />
+                      <span>Deep Research</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => setIsIngestionModalOpen(true)}

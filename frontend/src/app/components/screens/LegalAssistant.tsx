@@ -4,7 +4,7 @@ import {
   Plus, MessageSquare, Trash2, X,
   ChevronLeft, Paperclip, Image as ImageIcon,
   Database, Upload, Link as LinkIcon, Send as SendIcon, X as XIcon, Sparkles, Clock, Lock, History,
-  Search, Zap, Gavel, Scale, Shield, ChevronUp, ChevronDown
+  Search, Zap, Gavel, Scale, Shield, ChevronUp, ChevronDown, Brain
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router';
@@ -161,6 +161,8 @@ export function LegalAssistant() {
   const [llmProvider, setLlmProvider] = useState<string>(() => {
     return localStorage.getItem('legal-llm-provider') || 'huggingface';
   });
+  const [agenticMode, setAgenticMode] = useState<boolean>(() => localStorage.getItem('legal-agentic-mode') === 'true');
+  const [agentStatus, setAgentStatus] = useState<string[]>([]);
 
   const [legalFilter, setLegalFilter] = useState<string | null>(null);
 
@@ -285,6 +287,14 @@ export function LegalAssistant() {
   }, []);
 
   useEffect(() => {
+    localStorage.setItem('legal-llm-provider', llmProvider);
+  }, [llmProvider]);
+
+  useEffect(() => {
+    localStorage.setItem('legal-agentic-mode', String(agenticMode));
+  }, [agenticMode]);
+
+  useEffect(() => {
     const handleLoadConv = (e: any) => {
       if (e.detail?.id) loadConversation(e.detail.id);
     };
@@ -325,6 +335,7 @@ export function LegalAssistant() {
     };
 
     setMessages(prev => [...prev, userMsg]);
+    setAgentStatus([]);
     setIsThinking(true);
     setIsStreaming(true);
     setStreamingAnswer('');
@@ -366,7 +377,14 @@ export function LegalAssistant() {
         false,
         llmProvider,
         true, // isLegalMode = true
-        legalFilter
+        legalFilter,
+        agenticMode,
+        (status) => {
+          setAgentStatus(prev => {
+            if (prev.includes(status.message)) return prev;
+            return [...prev, status.message];
+          });
+        }
       );
 
       const aiMsg: ChatMessage = {
@@ -477,6 +495,24 @@ export function LegalAssistant() {
             </div>
           </div>
         ))}
+
+        {/* Agent Status Display */}
+        {(isThinking || isStreaming) && agentStatus.length > 0 && (
+          <div className="mb-4 p-4 rounded-2xl bg-purple-500/5 border border-purple-500/10 animate-in fade-in slide-in-from-bottom-2 duration-500 w-fit">
+            <div className="flex items-center gap-2 mb-3">
+              <Brain className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Legal Research Pipeline</span>
+            </div>
+            <div className="space-y-2">
+              {agentStatus.map((status, idx) => (
+                <div key={idx} className="flex items-start gap-2 text-[11px] text-white/50 font-mono">
+                  <span className="text-purple-500/50">›</span>
+                  <span>{status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {isThinking && (
           <div className="flex items-center gap-3 text-white/40 p-4 rounded-2xl bg-white/5 w-fit">
@@ -619,7 +655,23 @@ export function LegalAssistant() {
                     </select>
                   </div>
                    
-                   <div className="h-4 w-px bg-white/5 mx-2" />
+                    <div className="h-4 w-px bg-white/5 mx-2" />
+                    
+                    {/* Deep Research Toggle */}
+                    <button
+                      onClick={() => setAgenticMode(!agenticMode)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all ${
+                        agenticMode 
+                          ? 'bg-purple-500/10 text-purple-400 border-purple-500/30 shadow-[0_0_10px_rgba(168,85,247,0.1)]' 
+                          : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'
+                      }`}
+                      title="Enable Agentic Multi-Stage Reasoning"
+                    >
+                      <Brain className={`w-3.5 h-3.5 ${agenticMode ? 'animate-pulse' : ''}`} />
+                      <span>Deep Research</span>
+                    </button>
+                    
+                    <div className="h-4 w-px bg-white/5 mx-2" />
                    
                    <div className="flex items-center gap-3">
                       {['statute', 'judgment'].map(f => (

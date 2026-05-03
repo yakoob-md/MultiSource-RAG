@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { FileText, Globe, Youtube, Database, Languages, Activity } from 'lucide-react';
+import { FileText, Globe, Youtube, Database, Languages, Activity, BarChart3, ChevronRight } from 'lucide-react';
 import { KnowledgeSource } from '../../types';
 import { fetchSources, fetchPendingImageCount } from '../../api';
 import { ImageIcon } from 'lucide-react';
+import { useNavigate } from 'react-router';
 
 export function Dashboard() {
+  const navigate = useNavigate();
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -194,6 +196,23 @@ export function Dashboard() {
             <h3 className="text-sm text-gray-600 dark:text-gray-400 mb-1">Vision Queue</h3>
             <p className="text-xs text-gray-500 dark:text-gray-500">
               {pendingImages === 0 ? 'All images processed' : 'Pending LLaVA analysis'}
+            </p>
+          </div>
+
+          {/* System Audit */}
+          <div 
+            onClick={() => navigate('/app/evaluate')}
+            className="p-6 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700 hover:border-[#6366F1]/50 hover:shadow-xl transition-all cursor-pointer group"
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div className="p-3 rounded-xl bg-[#6366F1]/10 group-hover:bg-[#6366F1]/20 transition-all">
+                <BarChart3 className="w-6 h-6 text-[#6366F1]" />
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#6366F1] transition-all" />
+            </div>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-[#F8FAFC] mb-1">System Audit</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Run RAGAS performance benchmarks
             </p>
           </div>
         </div>

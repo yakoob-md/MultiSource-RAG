@@ -34,6 +34,7 @@ class QueryRequest(BaseModel):
     llm_provider    : str | None = "groq"
     is_legal_mode   : bool = False
     legal_filter    : str | None = None # "statute", "judgment", or None
+    agentic_mode    : bool = False  # ← Deep Research: 3-stage Planner→Searcher→Validator
 
 
 def _history_to_dicts(history: list[ChatMessageModel] | None) -> list[dict] | None:
@@ -344,8 +345,41 @@ def query_stream(req: QueryRequest):
         augmented_history = [{"role": "system", "content": image_context_block}] + augmented_history
 
     def event_stream():
+        nonlocal multi_result, chunks
+
+        # ── Agentic Mode: run 3-stage pipeline before generation ──────────────
+        if req.agentic_mode:
+            try:
+                from backend.rag.agent_workflow import run_agentic_workflow
+
+                def _retriever_fn(q: str, sids):
+                    from backend.api.query import _safe_classify, _do_retrieve
+                    analysis = _safe_classify(q)
+                    return _do_retrieve(q, sids or req.source_ids, analysis)
+
+                # Stream each stage status to the UI
+                yield f"data: {json.dumps({'type': 'agent_status', 'stage': 0, 'message': '🚀 Deep Research Mode activated — starting multi-stage analysis...'})}\n\n"
+
+                is_legal_flag = req.is_legal_mode or (req.llm_provider == "huggingface")
+                multi_result, status_log = run_agentic_workflow(
+                    question=req.question,
+                    retriever_fn=_retriever_fn,
+                    source_ids=req.source_ids,
+                    is_legal=is_legal_flag,
+                )
+                chunks = multi_result.all_chunks
+
+                for i, msg in enumerate(status_log):
+                    yield f"data: {json.dumps({'type': 'agent_status', 'stage': i + 1, 'message': msg})}\n\n"
+
+            except Exception as e:
+                print(f"[QueryStream] Agentic workflow error: {e} — falling back to standard retrieval")
+                yield f"data: {json.dumps({'type': 'agent_status', 'stage': 0, 'message': f'⚠️ Deep research unavailable ({str(e)[:60]}), using standard retrieval'})}\n\n"
+
         # ── Meta event: sent first so UI populates sources panel immediately ──
-        yield f"data: {json.dumps({'type': 'meta', 'chatId': chat_id, 'conversationId': conv_id, 'citations': citations_out, 'retrievedChunks': chunks_out, 'sourceCount': multi_result.source_count, 'activeProvider': req.llm_provider or 'groq'})}\n\n"
+        citations_final = _format_citations_out(_build_citations(chunks))
+        chunks_final = _format_chunks_out(chunks)
+        yield f"data: {json.dumps({'type': 'meta', 'chatId': chat_id, 'conversationId': conv_id, 'citations': citations_final, 'retrievedChunks': chunks_final, 'sourceCount': multi_result.source_count, 'activeProvider': req.llm_provider or 'groq'})}\n\n"
 
         # ── Empty result ─────────────────────────────────────────────────────
         if not chunks:

@@ -294,7 +294,9 @@ export async function streamQueryRag(
   includeImages?: boolean,
   llmProvider: string = "groq",
   isLegalMode: boolean = false,
-  legalFilter: string | null = null
+  legalFilter: string | null = null,
+  agenticMode: boolean = false,
+  onAgentStatus?: (status: { stage: number; message: string }) => void
 ): Promise<void> {
   let response: Response;
   try {
@@ -311,6 +313,7 @@ export async function streamQueryRag(
         llm_provider: llmProvider,
         is_legal_mode: isLegalMode,
         legal_filter: legalFilter,
+        agentic_mode: agenticMode,
       }),
     });
   } catch (err) {
@@ -357,6 +360,12 @@ export async function streamQueryRag(
             return;
           }
 
+          if (parsed.type === 'agent_status') {
+            if (onAgentStatus) {
+              onAgentStatus({ stage: parsed.stage, message: parsed.message });
+            }
+          }
+
           if (parsed.type === 'meta') {
             const citations: Citation[] = (parsed.citations || []).map((c: any) => ({
               sourceTitle: c.sourceTitle || c.source_title || '',
@@ -398,6 +407,30 @@ export async function streamQueryRag(
   } catch (err) {
     onError(err instanceof Error ? err : new Error(String(err)));
   }
+}
+
+// ── Evaluation API ───────────────────────────────────────────────────────────
+
+export async function startEvaluation(nQuestions: number = 15): Promise<string> {
+  const response = await fetch(`${API_BASE}/eval/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ n_questions: nQuestions }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to start evaluation');
+  }
+  const data = await response.json();
+  return data.job_id;
+}
+
+export async function getEvaluationStatus(jobId: string): Promise<any> {
+  const response = await fetch(`${API_BASE}/eval/status/${jobId}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch evaluation status');
+  }
+  return response.json();
 }
 
 // ── History API ─────────────────────────────────────────────────────────────

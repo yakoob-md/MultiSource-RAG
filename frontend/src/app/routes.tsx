@@ -11,6 +11,7 @@ import { Settings } from "./components/screens/Settings";
 import { LegalAssistant } from "./components/screens/LegalAssistant";
 import { UploadImage } from "./components/screens/UploadImage";
 import { Landing } from "./components/screens/Landing";
+import { EvalDashboard } from "./components/screens/EvalDashboard";
 
 export const router = createBrowserRouter([
   {
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
       { path: "settings", Component: Settings },
       { path: "legal", Component: LegalAssistant },
       { path: "upload-image", Component: UploadImage },
+      { path: "evaluate", Component: EvalDashboard },
     ],
   },
 ]);
