@@ -345,7 +345,7 @@ def query_stream(req: QueryRequest):
 
     def event_stream():
         # ── Meta event: sent first so UI populates sources panel immediately ──
-        yield f"data: {json.dumps({'type': 'meta', 'chatId': chat_id, 'conversationId': conv_id, 'citations': citations_out, 'retrievedChunks': chunks_out, 'sourceCount': multi_result.source_count})}\n\n"
+        yield f"data: {json.dumps({'type': 'meta', 'chatId': chat_id, 'conversationId': conv_id, 'citations': citations_out, 'retrievedChunks': chunks_out, 'sourceCount': multi_result.source_count, 'activeProvider': req.llm_provider or 'groq'})}\n\n"
 
         # ── Empty result ─────────────────────────────────────────────────────
         if not chunks:

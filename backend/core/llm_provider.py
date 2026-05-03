@@ -163,7 +163,7 @@ class LLMProvider:
             payload = {"prompt": prompt}
             url = f"{KAGGLE_BRIDGE_URL.rstrip('/')}/generate"
             print(f"[LLMProvider] Sending request to Kaggle Bridge: {url}")
-            response = requests.post(url, json=payload, timeout=60)
+            response = requests.post(url, json=payload, timeout=120)
             
             if response.status_code == 200:
                 full_result = response.json().get("answer", "")

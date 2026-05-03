@@ -227,6 +227,7 @@ export function AskAI() {
   // ── Conversation state ────────────────────────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [activeModel, setActiveModel] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -491,6 +492,10 @@ export function AskAI() {
             setActiveConvId(meta.conversationId);
             (window as any).currentConversationId = meta.conversationId;
           }
+          // Show which model is actually responding
+          if ((meta as any).activeProvider) {
+            setActiveModel((meta as any).activeProvider);
+          }
         },
         (err) => { throw err; },
         activeImageId || undefined,
@@ -581,6 +586,14 @@ export function AskAI() {
 
           {isStreaming && streamingAnswer && (
             <div className="max-w-[85%] p-6 rounded-3xl bg-white/[0.03] border border-white/5 backdrop-blur-xl">
+              <div className="flex items-center justify-between mb-2">
+                 <span className="text-[10px] font-bold uppercase tracking-widest text-white/20">InteleX</span>
+                 {activeModel && (
+                   <span className="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-[#6366F1]/10 text-[#6366F1] border border-[#6366F1]/20">
+                     Active: {activeModel === 'huggingface' ? 'Legal' : 'Groq'}
+                   </span>
+                 )}
+              </div>
               <p className="text-sm leading-relaxed whitespace-pre-line font-medium text-white/90">
                 {streamingAnswer}
                 <span className="inline-block w-1 h-4 ml-1 bg-[#6366F1] animate-pulse align-middle" />

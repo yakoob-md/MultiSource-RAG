@@ -169,32 +169,37 @@ def generate_answer_stream(
     
     # ── Option 1: Groq (Native Streaming) ─────────────────────────────────────
     if provider_name != "huggingface":
-        client = _get_groq_client()
-        stream = client.chat.completions.create(
-            model    = GROQ_MODEL,
-            messages = messages,
-            stream   = True,
-            timeout  = GROQ_TIMEOUT,
-        )
-        for chunk_response in stream:
-            token = chunk_response.choices[0].delta.content
-            if token is not None:
-                yield token
+        try:
+            client = _get_groq_client()
+            stream = client.chat.completions.create(
+                model    = GROQ_MODEL,
+                messages = messages,
+                stream   = True,
+                timeout  = GROQ_TIMEOUT,
+            )
+            for chunk_response in stream:
+                token = chunk_response.choices[0].delta.content
+                if token is not None:
+                    yield token
+        except Exception as e:
+            yield f"\n\n[SYSTEM: Generation failed — {str(e)}]"
         return
 
     # ── Option 2: Fine-tuned (Kaggle/Local) ───────────────────────────────────
-    # We use the centralized provider. Since it's currently non-streaming,
-    # we simulate streaming for a better UI experience.
     try:
         answer = llm_provider.generate(messages, mode="finetuned")
+        if not answer or not answer.strip():
+            yield "[SYSTEM: Fine-tuned model returned empty response. Check Kaggle bridge.]"
+            return
+            
         words = answer.split(" ")
+        import time
         for i, word in enumerate(words):
             yield word + (" " if i < len(words) - 1 else "")
-            # Micro-sleep to prevent UI from freezing
-            import time
-            time.sleep(0.01)
+            # Micro-sleep to prevent UI from freezing and for better readability
+            time.sleep(0.012)
     except Exception as e:
-        yield f"Generation error: {str(e)}"
+        yield f"\n\n[SYSTEM: Fine-tuned model error — {str(e)}. Restart the Kaggle bridge.]"
 
 
 # ── Non-streaming path ────────────────────────────────────────────────────────
