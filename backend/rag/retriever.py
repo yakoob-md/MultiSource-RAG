@@ -303,3 +303,41 @@ def retrieve(
         return final_chunks[:effective_fallback]
 
     return []
+
+
+def fetch_image_chunk(image_id: str) -> RetrievedChunk | None:
+    """Fetch the caption chunk for a processed image as a RetrievedChunk."""
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT 
+                    c.id AS chunk_id,
+                    c.source_id,
+                    c.chunk_text,
+                    s.type AS source_type,
+                    s.title AS source_title,
+                    s.language
+                FROM chunks c
+                JOIN sources s ON s.id = c.source_id
+                WHERE c.source_id = %s AND c.chunk_type = 'image'
+                LIMIT 1
+            """, (image_id,))
+            row = cursor.fetchone()
+            if row:
+                from backend.rag.retriever import RetrievedChunk
+                return RetrievedChunk(
+                    chunk_id=row["chunk_id"],
+                    source_id=row["source_id"],
+                    source_type=row["source_type"],
+                    source_title=row["source_title"],
+                    chunk_text=row["chunk_text"],
+                    score=10.0, # High score to ensure it stays in the list
+                    page_number=None,
+                    timestamp_s=None,
+                    url_ref=None,
+                    language=row["language"] or "en"
+                )
+    except Exception as e:
+        print(f"[Retriever] Error fetching image chunk: {e}")
+    return None

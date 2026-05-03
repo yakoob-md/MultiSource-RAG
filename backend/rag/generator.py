@@ -286,12 +286,55 @@ def generate_answer_stream(
           f"total_messages={len(messages)}")
 
     if llm_provider == "huggingface":
-        # HF API doesn't robustly support SSE without dedicated endpoints.
-        # We will block, fetch the whole answer, and yield it as one token.
-        print(f"[Generator] Using HF API for {HF_LEGAL_MODEL_ID}")
-        answer = _call_hf_api(messages)
-        yield answer
-        return
+        print(f"[Generator] Streaming from HF API: {HF_LEGAL_MODEL_ID}")
+        # HF Inference API supports streaming via SSE if we pass stream: true
+        api_url = f"https://api-inference.huggingface.co/models/{HF_LEGAL_MODEL_ID}"
+        headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+        
+        # Approximate prompt (same as _call_hf_api)
+        prompt = ""
+        for m in messages:
+            if m["role"] == "system":
+                prompt += f"<<SYS>>\n{m['content']}\n<</SYS>>\n\n"
+            elif m["role"] == "user":
+                prompt += f"[INST] {m['content']} [/INST] "
+            elif m["role"] == "assistant":
+                prompt += f"{m['content']} </s><s>"
+
+        try:
+            import json
+            response = requests.post(api_url, headers=headers, json={
+                "inputs": prompt,
+                "parameters": {"max_new_tokens": 1024, "temperature": 0.3, "return_full_text": False},
+                "stream": True
+            }, timeout=GROQ_TIMEOUT, stream=True)
+
+            if response.status_code != 200:
+                yield f"Error from HF API ({response.status_code}): {response.text}"
+                return
+
+            for line in response.iter_lines():
+                if line:
+                    decoded = line.decode('utf-8')
+                    if decoded.startswith('data:'):
+                        try:
+                            data = json.loads(decoded[5:])
+                            token = data.get("token", {}).get("text", "")
+                            if token:
+                                yield token
+                        except:
+                            continue
+            return
+        except Exception as e:
+            print(f"[Generator] HF Stream Error: {e}")
+            # Fallback to non-stream if stream fails
+            answer = _call_hf_api(messages)
+            # Simulate streaming for fallback
+            import time
+            for word in answer.split(" "):
+                yield word + " "
+                time.sleep(0.02)
+            return
 
     client = _get_groq_client()
 

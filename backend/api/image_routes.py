@@ -12,19 +12,36 @@ router = APIRouter()
 @router.post("/upload-image")
 async def upload_image(file: UploadFile = File(...), context: str = ""):
     """
-    Endpoint to upload an image and queue it for vision processing.
+    Endpoint to upload an image and auto-caption it for the knowledge base.
     """
     try:
         # Read file bytes
         file_bytes = await file.read()
         
-        # Call save and queue logic
+        # 1. Save and queue (Fixes FK violation by using NULL source_id internally)
         result = save_image_and_queue(file_bytes, file.filename, context)
+        image_id = result["image_id"]
         
+        # 2. IMMEDIATELY call captioner (Synchronous for now as per strategy)
+        from backend.vision.blip_captioner import caption_image_blip
+        from backend.ingestion.image_loader import mark_job_completed, mark_job_failed
+        
+        caption = caption_image_blip(file_bytes)
+        
+        if "error" in caption.lower() or "could not be captioned" in caption.lower():
+            # Keep as pending for manual retry/LLaVA if it failed
+            status = "pending"
+            final_caption = None
+        else:
+            mark_job_completed(image_id, caption)
+            status = "completed"
+            final_caption = caption
+
         return {
-            "message": "Image queued for processing",
-            "image_id": result["image_id"],
-            "status": "pending"
+            "image_id": image_id,
+            "status": status,
+            "caption": final_caption,
+            "message": "Image uploaded and processed" if status == "completed" else "Image uploaded (caption pending)"
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

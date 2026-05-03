@@ -49,6 +49,7 @@ export function KnowledgeSources() {
 
   const groupedSources = {
     pdf: filteredSources.filter(s => s.type === 'pdf'),
+    image: filteredSources.filter(s => s.type === 'image'),
     web: filteredSources.filter(s => s.type === 'web'),
     youtube: filteredSources.filter(s => s.type === 'youtube'),
   };
@@ -95,6 +96,7 @@ export function KnowledgeSources() {
             >
               <option value="all">All Types</option>
               <option value="pdf">PDF</option>
+              <option value="image">Image</option>
               <option value="web">Web</option>
               <option value="youtube">YouTube</option>
             </select>
@@ -129,6 +131,25 @@ export function KnowledgeSources() {
 
         {/* Sources by Type */}
         <div className="space-y-8">
+          {groupedSources.image.length > 0 && (
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <ImageIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                <h2 className="text-xl text-gray-900 dark:text-[#F8FAFC]">Visual Intelligence (Images)</h2>
+                <span className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-sm text-gray-600 dark:text-gray-400">
+                  {groupedSources.image.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {groupedSources.image.map(source => (
+                  <div key={source.id} className="relative group">
+                    <SourceCard source={source} />
+                    <SourceActions sourceId={source.id} onDelete={handleDelete} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {groupedSources.pdf.length > 0 && (
             <div>
               <div className="flex items-center gap-3 mb-4">

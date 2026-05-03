@@ -215,6 +215,16 @@ def query(req: QueryRequest):
     try:
         multi_result = _do_retrieve(retrieval_question, req.source_ids, analysis)
         chunks = multi_result.all_chunks
+        
+        # ── Mandatory Image Consideration ─────────────────────────────────────
+        if req.image_id:
+            from backend.rag.retriever import fetch_image_chunk
+            img_chunk = fetch_image_chunk(req.image_id)
+            if img_chunk:
+                chunks = [img_chunk] + chunks
+                # Also update multi_result if possible (though chunks is used below)
+                multi_result.all_chunks = chunks
+                print(f"[Query] Injected image chunk for {req.image_id}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
 
@@ -282,6 +292,18 @@ def query_stream(req: QueryRequest):
     try:
         multi_result = _do_retrieve(retrieval_question, req.source_ids, analysis)
         chunks = multi_result.all_chunks
+        
+        # ── Mandatory Image Consideration ─────────────────────────────────────
+        # If an image_id is present, we FETCH its caption chunk and FORCE it
+        # into the chunks list so it's always considered and cited.
+        if req.image_id:
+            from backend.rag.retriever import fetch_image_chunk
+            img_chunk = fetch_image_chunk(req.image_id)
+            if img_chunk:
+                # Prepend so it has high priority in context
+                chunks = [img_chunk] + chunks
+                print(f"[QueryStream] Injected image chunk for {req.image_id}")
+        
         print(f"[QueryStream] Retrieved {len(chunks)} chunks from {multi_result.source_count} sources")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")

@@ -1,289 +1,43 @@
-You are a senior full-stack AI engineer and UX engineer specializing in RAG systems, chat memory, and ChatGPT-like interfaces.
-
-I will provide my repository. Your job is to DEBUG, FIX, and IMPLEMENT missing features so that the system behaves like ChatGPT.
-
----
-
-# 🚨 CURRENT PROBLEMS (MUST FIX)
-
-## 1. CONTEXT MEMORY IS BROKEN
-
-Problem:
-
-* When I ask: “What does appellant mean?”
-* Then follow-up: “Explain with example”
-* System fails → does NOT remember previous context
-
----
-
-### REQUIREMENT:
-
-* Each chat must maintain FULL context
-* Follow-up questions must work naturally
-* LLM must understand previous conversation
-
----
-
-### FIX REQUIRED:
-
-You must:
-
-1. Ensure chat history is correctly stored in DB:
-
-   * conversation_id
-   * role (user/assistant)
-   * message
-
-2. When generating response:
-
-   * Fetch previous messages (at least last 3–5 turns)
-   * Inject into prompt BEFORE new query
-
-3. Prompt format MUST be:
-
-SYSTEM PROMPT
-CHAT HISTORY (ordered)
-RAG CONTEXT
-USER QUERY
-
-4. Ensure correct formatting:
-
-   * role-based messages
-   * no broken ordering
-
----
-
-## 2. CHAT HISTORY + RESUME CHAT (CRITICAL)
-
-Problem:
-
-* I cannot properly resume chats with context intact
-
----
-
-### REQUIREMENT:
-
-* Chat history sidebar must:
-
-  * Show all chats
-  * Allow reopening any chat
-  * Restore full context
-
----
-
-### FIX REQUIRED:
-
-* When chat is clicked:
-
-  * Load messages from DB
-  * Set active conversation
-  * Continue conversation seamlessly
-
-* Ensure:
-
-  * No context reset
-  * No missing messages
-
----
-
-## 3. FILE / IMAGE UPLOAD IN CHAT (LIKE CHATGPT)
-
-Problem:
-
-* Cannot upload directly in chat UI
-* No feedback during upload
-
----
-
-### REQUIREMENT:
-
-* Upload button inside chat input
-* Support:
-
-  * Images
-  * PDFs (optional)
-
----
-
-### UX REQUIRED:
-
-* Show:
-
-  * “Uploading…” state
-  * Preview of uploaded file
-  * Remove option
-
----
-
-### BACKEND:
-
-* Handle file upload endpoint
-* Store temporarily
-* Pass image to model pipeline
-
----
-
-## 4. MULTI-MODAL CONTEXT IN CHAT
-
-Requirement:
-
-When user uploads image + asks question:
-
-Pipeline must be:
-
-Image → caption → merge with query → RAG → LLM
-
-Ensure:
-
-* Image context is included in prompt
-* Works with follow-up queries
-
----
-
-## 5. UI ISSUES (CRITICAL)
-
-### ❌ Problem 1:
-
-Latest message not visible (chat overflow broken)
-
-### FIX:
-
-* Chat container must:
-
-  * Auto scroll to bottom
-  * Not be hidden behind input box
-  * Proper padding at bottom
-
----
-
-### ❌ Problem 2:
-
-Layout breaking / overflow
-
-### FIX:
-
-* Fix flexbox layout
-* Ensure:
-
-  * Scrollable chat area
-  * Sticky input box
-  * No overlap
-
----
-
-## 6. LEGAL AI UI ENHANCEMENT
-
-When clicking Legal AI section:
-
-### Improve:
-
-* Layout spacing
-* Resource display cards
-* Selection UI
-* Overall polish
-
----
-
-### Must include:
-
-* Clean grid layout
-* Proper margins/padding
-* Better typography
-* Clear section hierarchy
-
----
-
-## 7. SIDEBAR DESIGN (VERY IMPORTANT)
-
-Requirement:
-
-* Apply **BEMAS-style background theme** to:
-
-  * Sidebar (chat history)
-  * Legal AI section
-  * Entire app
-
----
-
-### EXCEPTION:
-
-* Do NOT apply on landing page
-
----
-
-### Ensure:
-
-* Consistent theme
-* Professional look
-* No visual clutter
-
----
-
-## 8. PERFORMANCE + UX FIXES
-
-Ensure:
-
-* Smooth chat experience
-* No UI flicker
-* Fast response rendering
-* Proper loading indicators
-
----
-
-# 🔧 YOUR TASK
-
-## STEP 1: DEBUG
-
-* Identify why context is not being passed
-* Identify why chat resume fails
-* Identify UI layout bugs
-
----
-
-## STEP 2: FIX BACKEND
-
-* Chat history retrieval
-* Prompt construction
-* Context injection
-* File upload handling
-
----
-
-## STEP 3: FIX FRONTEND
-
-* Chat layout
-* Sidebar
-* Upload UI
-* Auto-scroll behavior
-
----
-
-## STEP 4: IMPLEMENT FEATURES
-
-* Multi-modal chat
-* Upload preview
-* Persistent chat context
-
----
-
-## STEP 5: TESTING
-
-Provide test cases:
-
-1. Ask definition → follow-up question → should work
-2. Reload chat → context still present
-3. Upload image → ask question → correct response
-4. Long chat → scroll works correctly
-
----
-
-## ⚠️ STRICT RULES
-
-* Do NOT give generic advice
-* Provide exact code changes
-* Mention file names and functions
-* Ensure production-level quality
-
----
-
-Now analyze my repo and fix EVERYTHING step-by-step.
+My image upload crashes with a database foreign key error. Fix the entire image pipeline.
+Problem 1: FK violation in image_loader.py
+image_jobs table has source_id VARCHAR(36) NOT NULL with FK to sources(id). But save_image_and_queue() passes image_id as source_id — which doesn't exist in sources. Fix: make source_id nullable (migration ran in Phase A). Update the INSERT to:
+pythoncursor.execute("""
+    INSERT INTO image_jobs (id, source_id, image_path, status)
+    VALUES (%s, NULL, %s, %s)
+""", (image_id, str(dest_path), 'pending'))
+Problem 2: /images/upload-image endpoint
+In backend/api/image_routes.py, the endpoint reads file.read() but FastAPI async file upload needs await file.read(). Verify the function is async def and uses await.
+Problem 3: BLIP integration (HF API)
+Create backend/vision/blip_captioner.py:
+
+Function caption_image_blip(image_bytes: bytes) -> str
+Uses HF Inference API: https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large
+POST request with raw image bytes
+Auth header: Bearer {HF_API_KEY}
+Timeout: 30 seconds
+Returns caption string or "Image uploaded but could not be captioned" on failure
+Add a caption_image_blip_base64(b64_str: str) -> str wrapper
+
+Problem 4: Auto-caption on upload
+Update backend/api/image_routes.py upload endpoint to:
+
+Save file and create pending job (existing logic, fixed)
+IMMEDIATELY call caption_image_blip(file_bytes) synchronously
+If caption succeeds, update job status to completed and store caption
+If fails, leave as pending (for manual LLaVA run later)
+Return {"image_id": ..., "status": "completed"/"pending", "caption": "..." or null}
+
+Problem 5: Wire image context into queries
+Create backend/rag/image_rag.py:
+
+get_caption_for_image(image_id: str) -> str | None — fetches from DB
+enrich_query_with_image_context(question, image_id=None) -> tuple[str, str]
+
+Returns (enriched_question, image_context_block)
+enriched_question = original question + "\n[Image shows: {first 150 chars of caption}]"
+image_context_block = full caption (max 300 chars) as a system note
+
+
+Update backend/api/query.py QueryRequest to add image_id: str | None = None
+Before retrieve(), call enrich_query_with_image_context
+Prepend image_context_block to the system prompt in generator
