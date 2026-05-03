@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   Send, Loader2, FileText, Globe, Youtube,
   Plus, MessageSquare, Trash2, X,
@@ -246,7 +246,9 @@ export function AskAI() {
   // ── Source selector & Provider ──────────────────────────────────────────────
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
   const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set());
-  const [llmProvider, setLlmProvider] = useState<string>('groq');
+  const [llmProvider, setLlmProvider] = useState<string>(() => {
+    return localStorage.getItem('intellex-llm-provider') || 'groq';
+  });
 
   // ── Image Upload state ─────────────────────────────────────────────────────
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
@@ -279,10 +281,28 @@ export function AskAI() {
   const [mentionIndex, setMentionIndex] = useState(0);
   const [taggedSourceIds, setTaggedSourceIds] = useState<Set<string>>(new Set());
 
-  const filteredMentions = sources.filter(s => 
-    selectedSourceIds.has(s.id) &&
-    s.title.toLowerCase().includes(mentionQuery.toLowerCase())
-  );
+  const filteredMentions = useMemo(() => {
+    if (!mentionQuery) {
+      // Show legal sources first when in legal mode, then recent sources
+      const legalSources = sources.filter(s => 
+        s.metadata?.docType && selectedSourceIds.has(s.id)
+      );
+      const recentSources = sources
+        .filter(s => selectedSourceIds.has(s.id) && !s.metadata?.docType)
+        .sort((a, b) => b.dateAdded.getTime() - a.dateAdded.getTime())
+        .slice(0, 5);
+      return [...legalSources, ...recentSources];
+    }
+    
+    const query = mentionQuery.toLowerCase();
+    return sources.filter(s => 
+      selectedSourceIds.has(s.id) && (
+        s.title.toLowerCase().includes(query) ||
+        s.metadata?.docType?.includes(query) ||
+        s.metadata?.court?.toLowerCase().includes(query)
+      )
+    );
+  }, [mentionQuery, sources, selectedSourceIds]);
 
   const toggleSourceSelection = useCallback((sourceId: string) => {
     setSelectedSourceIds(prev => {
@@ -839,7 +859,7 @@ export function AskAI() {
 
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-[#6366F1]/30 transition-all group">
                     {llmProvider === 'huggingface' ? (
-                      <Lock className="w-3.5 h-3.5 text-[#6366F1]" />
+                      <Sparkles className="w-3.5 h-3.5 text-[#6366F1]" />
                     ) : (
                       <Zap className="w-3.5 h-3.5 text-[#6366F1]" />
                     )}

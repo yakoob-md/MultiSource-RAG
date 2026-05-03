@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   Send, Loader2, FileText, Globe, Youtube,
   Plus, MessageSquare, Trash2, X,
@@ -87,26 +87,58 @@ const sourceIcon = (type: string) => {
   }
 };
 
-// ── Legal Citation Card ───────────────────────────────────────────────────────
-
+// ── Legal Citation Card (Enhanced with Tooltip) ───────────────────────────────
 function LegalCitationCard({ chunk, index }: { chunk: RetrievedChunk; index: number }) {
-  const [show, setShow] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
   const score = Math.round((chunk.similarityScore || 0) * 100);
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-4 shadow-sm hover:border-[#6366F1]/30 transition-all group">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md bg-[#6366F1]/10 flex items-center justify-center border border-[#6366F1]/20">
-             <Scale className="w-3.5 h-3.5 text-[#6366F1]" />
+    <div 
+      className="relative"
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      <div className="bg-white/5 border border-white/10 rounded-xl p-4 shadow-sm hover:border-[#6366F1]/30 transition-all group h-full">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-[#6366F1]/10 flex items-center justify-center border border-[#6366F1]/20">
+               <Scale className="w-3.5 h-3.5 text-[#6366F1]" />
+            </div>
+            <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest truncate max-w-[100px]">{chunk.sourceName}</span>
           </div>
-          <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{chunk.sourceName}</span>
+          <span className="text-[9px] font-bold text-[#6366F1] bg-[#6366F1]/10 px-1.5 py-0.5 rounded-md">{score}% match</span>
         </div>
-        <span className="text-[9px] font-bold text-[#6366F1] bg-[#6366F1]/10 px-1.5 py-0.5 rounded-md">{score}% match</span>
+        <p className="text-xs text-white/60 leading-relaxed line-clamp-3 italic">
+          "{chunk.text}"
+        </p>
       </div>
-      <p className="text-xs text-white/60 leading-relaxed line-clamp-3 italic">
-        "{chunk.text}"
-      </p>
+
+      <AnimatePresence>
+        {showTooltip && (
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+            className="absolute bottom-full left-0 mb-3 z-[100] w-[320px] pointer-events-none"
+          >
+            <div className="bg-[#111114] border border-white/10 rounded-2xl p-5 shadow-2xl shadow-black/50 backdrop-blur-xl">
+               <div className="flex items-center gap-3 mb-3">
+                 <Shield className="w-4 h-4 text-[#6366F1]" />
+                 <span className="text-[10px] font-bold text-white uppercase tracking-widest">Statutory Context</span>
+               </div>
+               <div className="space-y-3">
+                 <p className="text-xs text-white/80 leading-relaxed max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                   {chunk.text}
+                 </p>
+                 <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+                   <LinkIcon className="w-3 h-3 text-[#6366F1]" />
+                   <span className="text-[9px] text-[#6366F1] font-bold uppercase tracking-tight">Verified Reference ID: {chunk.id.slice(0,8)}</span>
+                 </div>
+               </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -124,7 +156,12 @@ export function LegalAssistant() {
   
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
   const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set());
-  const [llmProvider, setLlmProvider] = useState<string>('huggingface'); // Default to Legal
+  
+  // ── Persisted LLM Provider state ──
+  const [llmProvider, setLlmProvider] = useState<string>(() => {
+    return localStorage.getItem('legal-llm-provider') || 'huggingface';
+  });
+
   const [legalFilter, setLegalFilter] = useState<string | null>(null);
 
   const [isKbOpen, setIsKbOpen] = useState(false);
@@ -142,10 +179,28 @@ export function LegalAssistant() {
   const [mentionIndex, setMentionIndex] = useState(0);
   const [taggedSourceIds, setTaggedSourceIds] = useState<Set<string>>(new Set());
 
-  const filteredMentions = sources.filter(s => 
-    selectedSourceIds.has(s.id) &&
-    s.title.toLowerCase().includes(mentionQuery.toLowerCase())
-  );
+  const filteredMentions = useMemo(() => {
+    if (!mentionQuery) {
+      // Show legal sources first when in legal mode, then recent sources
+      const legalSources = sources.filter(s => 
+        s.metadata?.docType && selectedSourceIds.has(s.id)
+      );
+      const recentSources = sources
+        .filter(s => selectedSourceIds.has(s.id) && !s.metadata?.docType)
+        .sort((a, b) => b.dateAdded.getTime() - a.dateAdded.getTime())
+        .slice(0, 5);
+      return [...legalSources, ...recentSources];
+    }
+    
+    const query = mentionQuery.toLowerCase();
+    return sources.filter(s => 
+      selectedSourceIds.has(s.id) && (
+        s.title.toLowerCase().includes(query) ||
+        s.metadata?.docType?.includes(query) ||
+        s.metadata?.court?.toLowerCase().includes(query)
+      )
+    );
+  }, [mentionQuery, sources, selectedSourceIds]);
 
   const handleMentionSelect = (source: KnowledgeSource) => {
     const words = question.split(' ');
@@ -535,6 +590,7 @@ export function LegalAssistant() {
                    <button 
                      onClick={() => setIsKbOpen(true)}
                      className="p-2 text-white/20 hover:text-white transition-all flex items-center gap-2"
+                     title="Select Knowledge Sources"
                    >
                      <Database className="w-4 h-4" />
                      <span className="text-[10px] font-bold uppercase tracking-widest">{selectedSourceIds.size || 'No'} Sources</span>
@@ -550,8 +606,13 @@ export function LegalAssistant() {
                     )}
                     <select
                       value={llmProvider}
-                      onChange={(e) => setLlmProvider(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setLlmProvider(val);
+                        localStorage.setItem('legal-llm-provider', val);
+                      }}
                       className="bg-transparent border-none text-[10px] font-bold uppercase tracking-widest text-white/40 focus:outline-none cursor-pointer group-hover:text-white transition-colors"
+                      title="Select LLM Provider"
                     >
                       <option value="huggingface" className="bg-[#0A0A0B]">Legal Model (Fine-tuned)</option>
                       <option value="groq" className="bg-[#0A0A0B]">General Model (Groq)</option>
