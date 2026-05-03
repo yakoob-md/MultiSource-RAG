@@ -40,6 +40,55 @@ def _history_to_dicts(history: list[ChatMessageModel] | None) -> list[dict] | No
     return [{"role": m.role, "content": m.content} for m in history]
 
 
+def _contextualize_query(question: str, history: list[dict] | None) -> str:
+    """
+    Rewrite the user's question by injecting the last assistant response
+    as context. This resolves pronouns ("they", "it", "those", "that")
+    so the classifier and reranker see a self-contained question.
+
+    Example:
+        history[-1] = {role: assistant, content: "Cipher techniques include...
+                       digital signatures are used for..."}
+        question = "how are they different from message digests?"
+        → contextualized = "[Context: Cipher techniques include...
+                             digital signatures are used for...]
+                             how are they different from message digests?"
+
+    The LLM receives the original `question` for display purposes.
+    The `contextualized` version is only used for retrieval + classification.
+    """
+    if not history or not question.strip():
+        return question
+
+    # Only do this if query contains common pronouns / relative references
+    import re
+    pronoun_pattern = re.compile(
+        r'\b(they|them|their|it|its|this|that|those|these|he|she|his|her|the same|the above)\b',
+        re.IGNORECASE
+    )
+    if not pronoun_pattern.search(question):
+        return question
+
+    # Find the last assistant message
+    last_assistant = None
+    for msg in reversed(history):
+        if msg.get("role") == "assistant" and msg.get("content"):
+            last_assistant = msg["content"]
+            break
+
+    if not last_assistant:
+        return question
+
+    # Take first 400 chars of last answer as context prefix (keeps prompt short)
+    context_snippet = last_assistant[:400].strip()
+    if len(last_assistant) > 400:
+        context_snippet += "..."
+
+    contextualized = f"[Previous context: {context_snippet}]\n{question}"
+    print(f"[Query] Contextualized query for pronoun resolution ({len(question)} → {len(contextualized)} chars)")
+    return contextualized
+
+
 def _safe_classify(question: str) -> QueryAnalysis:
     """Always returns a valid QueryAnalysis, never raises."""
     try:
@@ -58,6 +107,8 @@ def _do_retrieve(question: str, req_source_ids: list[str] | None, analysis: Quer
     THE RETRIEVAL ROUTER.
     Priority:
       1. User explicitly selected sources → use retrieve_multi_selected (CORE FEATURE)
+         - 1 source → single_source path
+         - 2+ sources → multi_selected path (synthesis intent forced)
       2. Otherwise → let classifier intent decide
     """
     if req_source_ids and len(req_source_ids) > 0:
@@ -66,6 +117,7 @@ def _do_retrieve(question: str, req_source_ids: list[str] | None, analysis: Quer
             return retrieve_single_source(question, source_ids=req_source_ids)
         else:
             # MULTI-SOURCE CONSOLIDATION — the core product feature
+            # Force synthesis intent regardless of what the classifier said
             return retrieve_multi_selected(question, source_ids=req_source_ids)
     else:
         # No manual selection — let classifier decide
@@ -156,10 +208,12 @@ def query(req: QueryRequest):
         req.question, image_id=req.image_id, include_recent=req.include_images
     )
 
-    analysis = _safe_classify(enriched_question)
+    # Contextualize: expand pronouns using the last assistant turn
+    retrieval_question = _contextualize_query(enriched_question, history)
+    analysis = _safe_classify(retrieval_question)
 
     try:
-        multi_result = _do_retrieve(enriched_question, req.source_ids, analysis)
+        multi_result = _do_retrieve(retrieval_question, req.source_ids, analysis)
         chunks = multi_result.all_chunks
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
@@ -176,7 +230,8 @@ def query(req: QueryRequest):
         augmented_history = [{"role": "system", "content": image_context_block}] + augmented_history
 
     try:
-        result = generate_multi_answer(enriched_question, multi_result, history=augmented_history)
+        is_legal = (req.llm_provider == "huggingface")
+        result = generate_multi_answer(enriched_question, multi_result, history=augmented_history, is_legal=is_legal)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
@@ -217,12 +272,15 @@ def query_stream(req: QueryRequest):
         req.question, image_id=req.image_id, include_recent=req.include_images
     )
 
-    # 1. Classify
-    analysis = _safe_classify(enriched_question)
+    # Contextualize: expand pronouns using the last assistant turn
+    retrieval_question = _contextualize_query(enriched_question, history)
+
+    # 1. Classify (on the contextualized question for better intent detection)
+    analysis = _safe_classify(retrieval_question)
 
     # 2. Retrieve — uses source_ids if provided
     try:
-        multi_result = _do_retrieve(enriched_question, req.source_ids, analysis)
+        multi_result = _do_retrieve(retrieval_question, req.source_ids, analysis)
         chunks = multi_result.all_chunks
         print(f"[QueryStream] Retrieved {len(chunks)} chunks from {multi_result.source_count} sources")
     except Exception as e:

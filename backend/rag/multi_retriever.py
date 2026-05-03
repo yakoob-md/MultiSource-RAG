@@ -51,26 +51,33 @@ def retrieve_multi_selected(question: str, source_ids: list[str]) -> MultiSource
     Called when the user explicitly selects multiple sources in the UI.
     Retrieves a balanced chunk pool from EACH selected source independently
     so every source gets fair representation in the consolidated answer.
+
+    Key improvements:
+    - Uses min_chunks=3 so each source always contributes even with vague/pronoun queries
+    - Larger FAISS fetch (handled in retrieve() for source-filtered calls)
+    - Logs per-source chunk count and best score for diagnostics
     """
     print(f"[MultiRetriever] Multi-selected: {len(source_ids)} sources")
 
     source_groups: dict[str, list[RetrievedChunk]] = {}
     all_chunks: list[RetrievedChunk] = []
 
-    # Retrieve from each source individually for balanced representation
-    chunks_per_source = max(4, 16 // max(len(source_ids), 1))
+    # Allocate chunks per source: at minimum 3, balanced across all sources
+    chunks_per_source = max(3, 16 // max(len(source_ids), 1))
 
     for sid in source_ids:
         try:
-            chunks = retrieve(question, source_ids=[sid])
+            # min_chunks=3 guarantees each source contributes even on vague queries
+            chunks = retrieve(question, source_ids=[sid], min_chunks=3)
             chunks = chunks[:chunks_per_source]
             if not chunks:
-                print(f"[MultiRetriever] Source {sid} returned 0 chunks — skipping")
+                print(f"[MultiRetriever] ✗ Source {sid[:8]} returned 0 chunks even with fallback")
                 continue
             title = chunks[0].source_title
+            best_score = chunks[0].score
             source_groups[title] = chunks
             all_chunks.extend(chunks)
-            print(f"[MultiRetriever]   {title}: {len(chunks)} chunks")
+            print(f"[MultiRetriever] ✓ {title}: {len(chunks)} chunks (best score: {best_score:.4f})")
         except Exception as e:
             print(f"[MultiRetriever] Error on source {sid}: {e}")
 
@@ -112,7 +119,7 @@ def retrieve_for_comparison(question: str, analysis: QueryAnalysis, top_k_per_so
             if not ids:
                 continue
 
-            chunks = retrieve(question, source_ids=ids)[:top_k_per_source]
+            chunks = retrieve(question, source_ids=ids, min_chunks=2)[:top_k_per_source]
             for chunk in chunks:
                 source_groups.setdefault(chunk.source_title, []).append(chunk)
                 all_chunks.append(chunk)
@@ -136,7 +143,7 @@ def retrieve_for_comparison(question: str, analysis: QueryAnalysis, top_k_per_so
 # ── Path 4: Synthesis (classifier-driven, all sources) ───────────────────────
 
 def retrieve_for_synthesis(question: str, source_ids: list[str] | None = None) -> MultiSourceResult:
-    chunks = retrieve(question, source_ids=source_ids)
+    chunks = retrieve(question, source_ids=source_ids, min_chunks=2)
     source_groups = _build_source_groups(chunks)
     num_sources = len(source_groups)
 

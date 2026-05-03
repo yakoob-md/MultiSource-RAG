@@ -243,9 +243,10 @@ export function AskAI() {
 
   // ── Knowledge Base (Resources) state ───────────────────────────────────────
   const [isKbOpen, setIsKbOpen] = useState(false);
-  const [kbPage, setKbPage] = useState(1);
-  const KB_ITEMS_PER_PAGE = 4;
+  const [showAllSources, setShowAllSources] = useState(false);
+  const [sourceSearchQuery, setSourceSearchQuery] = useState('');
   const [isUploadingSource, setIsUploadingSource] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<{name: string, type: 'pdf' | 'image'} | null>(null);
   const sourceFileInputRef = useRef<HTMLInputElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -351,14 +352,16 @@ export function AskAI() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // Reset input so same file can be re-selected
+    e.target.value = '';
     
-    // Direct upload logic
     if (file.type.startsWith('image/')) {
         setIsUploadingImage(true);
         setImagePreviewUrl(URL.createObjectURL(file));
         try {
             const res = await uploadImage(file);
             setActiveImageId(res.image_id);
+            setUploadedFile({ name: file.name, type: 'image' });
         } catch (err: any) {
             setError(err.message || "Image upload failed");
             setImagePreviewUrl(null);
@@ -367,12 +370,17 @@ export function AskAI() {
         }
     } else if (file.type === 'application/pdf') {
         setIsUploadingSource(true);
+        setUploadedFile({ name: file.name, type: 'pdf' });
         try {
-            await uploadPdf(file);
+            const newSource = await uploadPdf(file);
+            // Immediately add to sources list so it's visible right away
+            setSources(prev => [newSource, ...prev]);
+            // Then do a full refresh to sync chunk counts etc.
             const updated = await fetchSources();
             setSources(updated);
         } catch (err: any) {
             setError(err.message || "PDF upload failed");
+            setUploadedFile(null);
         } finally {
             setIsUploadingSource(false);
         }
@@ -384,6 +392,8 @@ export function AskAI() {
     setImagePreviewUrl(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
+
+  const dismissUploadedFile = () => setUploadedFile(null);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -484,7 +494,13 @@ export function AskAI() {
   };
 
   return (
-    <div className="h-full flex text-white relative overflow-hidden">
+    <div className="h-full flex text-white relative overflow-hidden bg-[#050505]">
+      {/* Background Beams - Global Consistent Design */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-[#6366F1]/5 blur-[120px]" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-violet-600/5 blur-[120px]" />
+          <div className="absolute top-[20%] left-[30%] w-[40%] h-[40%] rounded-full bg-blue-600/5 blur-[120px] opacity-20" />
+      </div>
       
       {/* Main Container */}
       <div className="flex-1 flex flex-col relative z-10">
@@ -600,10 +616,49 @@ export function AskAI() {
             <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/90 to-transparent pointer-events-none -z-10 rounded-t-2xl" />
           )}
            <div className="relative group">
-              {/* Image Preview inside bar */}
+              {/* Upload feedback chip — shown after PDF/image upload (like ChatGPT) */}
+              <AnimatePresence>
+                {(uploadedFile || isUploadingSource) && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                        transition={{ duration: 0.2 }}
+                        className="absolute bottom-full mb-3 left-0"
+                    >
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#0a0a0f] border border-white/10 shadow-xl backdrop-blur-xl">
+                            {isUploadingSource ? (
+                                <Loader2 className="w-4 h-4 text-[#6366F1] animate-spin flex-shrink-0" />
+                            ) : uploadedFile?.type === 'pdf' ? (
+                                <FileText className="w-4 h-4 text-violet-400 flex-shrink-0" />
+                            ) : (
+                                <ImageIcon className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                            )}
+                            <div className="flex flex-col">
+                                <span className="text-[11px] font-bold text-white/90 max-w-[200px] truncate">
+                                    {isUploadingSource ? 'Uploading...' : uploadedFile?.name}
+                                </span>
+                                {!isUploadingSource && (
+                                    <span className="text-[9px] text-emerald-400 font-bold uppercase tracking-widest">✓ Added to knowledge base</span>
+                                )}
+                            </div>
+                            {!isUploadingSource && (
+                                <button
+                                    onClick={dismissUploadedFile}
+                                    className="ml-1 p-1 rounded-lg hover:bg-white/10 text-white/30 hover:text-white transition-all"
+                                >
+                                    <X className="w-3 h-3" />
+                                </button>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Image Preview above input bar */}
               <AnimatePresence>
                 {imagePreviewUrl && (
-                    <motion.div 
+                    <motion.div
                         initial={{ opacity: 0, y: 10, scale: 0.9 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 10, scale: 0.9 }}
@@ -652,30 +707,44 @@ export function AskAI() {
                            <button onClick={() => setSelectedSourceIds(new Set())} className="hover:text-white text-[#6366F1]/60"><X className="w-2 h-2" /></button>
                         </div>
                       )}
-                      <button 
+                      <button
                         type="button"
                         onClick={() => sourceFileInputRef.current?.click()}
-                        className="p-2 text-white/20 hover:text-white transition-colors flex items-center gap-2"
+                        disabled={isUploadingSource}
+                        className="p-2 text-white/20 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50"
                         title="Upload PDF or Image"
                       >
-                        <Paperclip className="w-4 h-4" />
-                        <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Attach</span>
+                        {isUploadingSource ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-[#6366F1]" />
+                        ) : (
+                          <Paperclip className="w-4 h-4" />
+                        )}
+                        <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">
+                          {isUploadingSource ? 'Uploading...' : 'Attach'}
+                        </span>
                       </button>
                       <input type="file" ref={sourceFileInputRef} onChange={handleFileChange} accept="image/*,application/pdf" className="hidden" />
-                      
+
                       <div className="h-4 w-px bg-white/5 mx-2" />
-                      
-                      <select 
-                        value={llmProvider}
-                        onChange={(e) => setLlmProvider(e.target.value)}
-                        className="bg-transparent border-none text-[10px] font-bold uppercase tracking-widest text-white/20 focus:outline-none cursor-pointer hover:text-[#6366F1] transition-colors"
-                      >
-                        <option value="groq">Default LLM</option>
-                        <option value="huggingface">Legal AI</option>
-                      </select>
+
+                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-[#6366F1]/30 transition-all group">
+                        {llmProvider === 'huggingface' ? (
+                            <Lock className="w-3.5 h-3.5 text-[#6366F1]" />
+                        ) : (
+                            <Zap className="w-3.5 h-3.5 text-[#6366F1]" />
+                        )}
+                        <select
+                            value={llmProvider}
+                            onChange={(e) => setLlmProvider(e.target.value)}
+                            className="bg-transparent border-none text-[10px] font-bold uppercase tracking-widest text-white/40 focus:outline-none cursor-pointer group-hover:text-white transition-colors"
+                        >
+                            <option value="groq" className="bg-[#0A0A0B]">General Intelligence</option>
+                            <option value="huggingface" className="bg-[#0A0A0B]">Legal Specialist AI</option>
+                        </select>
+                      </div>
                    </div>
 
-                   <button 
+                   <button
                     onClick={() => handleSubmit()}
                     disabled={!question.trim() || isThinking || isStreaming}
                     className={cn(
@@ -691,6 +760,7 @@ export function AskAI() {
         </div>
       </div>
 
+
       {/* Resource Manager Visual Modal */}
       <AnimatePresence>
         {isKbOpen && (
@@ -701,19 +771,37 @@ export function AskAI() {
                     exit={{ opacity: 0, scale: 0.95 }}
                     className="bg-[#0A0A0B] border border-white/10 w-full max-w-5xl rounded-3xl overflow-hidden flex flex-col max-h-[85vh] shadow-2xl relative"
                 >
-                    <div className="px-8 py-6 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+                    <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-50">
+                        <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full bg-[#6366F1]/10 blur-[120px]" />
+                        <div className="absolute top-[20%] -right-[10%] w-[50%] h-[50%] rounded-full bg-violet-500/5 blur-[100px]" />
+                        <div className="absolute -bottom-[10%] left-[20%] w-[60%] h-[60%] rounded-full bg-blue-500/5 blur-[110px]" />
+                    </div>
+
+                    <div className="px-8 py-6 border-b border-white/5 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white/[0.01] relative z-10 gap-4">
                         <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-[#6366F1]/10 flex items-center justify-center border border-[#6366F1]/20">
-                                <Database className="w-5 h-5 text-[#6366F1]" />
+                            <div className="w-12 h-12 rounded-2xl bg-[#6366F1]/10 flex items-center justify-center border border-[#6366F1]/20 shadow-inner">
+                                <Database className="w-6 h-6 text-[#6366F1]" />
                             </div>
                             <div>
-                                <h2 className="text-xl font-bold tracking-tight">Resource Manager</h2>
-                                <p className="text-[10px] text-white/20 font-bold uppercase tracking-[0.2em]">Knowledge Bank Statistics</p>
+                                <h2 className="text-2xl font-bold tracking-tight">Resource Manager</h2>
+                                <p className="text-[10px] text-white/20 font-bold uppercase tracking-[0.2em]">Knowledge Bank Intelligence</p>
                             </div>
                         </div>
-                        <button onClick={() => setIsKbOpen(false)} className="p-2 rounded-xl hover:bg-white/5 text-white/20 hover:text-white transition-all">
-                            <X className="w-5 h-5" />
-                        </button>
+                        <div className="flex items-center gap-3 w-full sm:w-auto">
+                            <div className="relative flex-1 sm:w-64 group">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 group-focus-within:text-[#6366F1] transition-colors" />
+                                <input 
+                                    type="text" 
+                                    placeholder="Search documents..." 
+                                    value={sourceSearchQuery}
+                                    onChange={(e) => setSourceSearchQuery(e.target.value)}
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-xs focus:outline-none focus:border-[#6366F1]/50 focus:ring-1 focus:ring-[#6366F1]/20 transition-all"
+                                />
+                            </div>
+                            <button onClick={() => setIsKbOpen(false)} className="p-2.5 rounded-xl hover:bg-white/5 text-white/20 hover:text-white transition-all">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-8 space-y-8 no-scrollbar">
@@ -787,36 +875,68 @@ export function AskAI() {
                             </div>
                         </div>
 
-                        {/* Recent Sources List */}
-                        <div className="space-y-4">
-                            <h3 className="text-sm font-bold uppercase tracking-widest px-1">Recent Knowledge</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {sources.slice(0, 8).map(source => (
-                                    <div key={source.id} className="flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all group">
-                                        <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white/20 group-hover:text-[#6366F1] transition-colors">
-                                            {source.type === 'pdf' ? <FileText className="w-5 h-5" /> : source.type === 'web' ? <Globe className="w-5 h-5" /> : <Youtube className="w-5 h-5" />}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-bold truncate">{source.title}</p>
-                                            <p className="text-[10px] text-white/20 font-medium uppercase tracking-tighter">{new Date(source.dateAdded).toLocaleDateString()}</p>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <button 
-                                                onClick={() => toggleSourceSelection(source.id)}
-                                                className={cn(
-                                                    "px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all",
-                                                    selectedSourceIds.has(source.id) 
-                                                        ? "bg-[#6366F1] text-white shadow-lg shadow-[#6366F1]/20" 
-                                                        : "bg-white/5 text-white/20 hover:bg-white/10"
-                                                )}
-                                            >
-                                                {selectedSourceIds.has(source.id) ? "Selected" : "Select"}
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
+                        {/* All Knowledge Sources */}
+                        <div className="space-y-4 relative z-10">
+                            <div className="flex items-center justify-between px-1">
+                                <h3 className="text-sm font-bold uppercase tracking-widest">
+                                    {sourceSearchQuery ? `Search Results: "${sourceSearchQuery}"` : "All Knowledge Sources"}
+                                </h3>
+                                <span className="text-[10px] text-white/30 font-bold uppercase tracking-widest">
+                                    {sources.filter(s => s.title.toLowerCase().includes(sourceSearchQuery.toLowerCase())).length} matches
+                                </span>
                             </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {(() => {
+                                    const filtered = sources.filter(s => s.title.toLowerCase().includes(sourceSearchQuery.toLowerCase()));
+                                    const displaySources = showAllSources || sourceSearchQuery ? filtered : filtered.slice(0, 8);
+                                    
+                                    if (displaySources.length === 0) {
+                                        return (
+                                            <div className="col-span-full py-12 text-center border border-dashed border-white/10 rounded-3xl bg-white/[0.01]">
+                                                <p className="text-white/20 text-xs font-bold uppercase tracking-widest">No matching documents found</p>
+                                            </div>
+                                        );
+                                    }
+
+                                    return displaySources.map(source => (
+                                        <div key={source.id} className="flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all group">
+                                            <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-white/20 group-hover:text-[#6366F1] transition-colors flex-shrink-0">
+                                                {source.type === 'pdf' ? <FileText className="w-5 h-5" /> : source.type === 'web' ? <Globe className="w-5 h-5" /> : <Youtube className="w-5 h-5" />}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-xs font-bold truncate">{source.title}</p>
+                                                <p className="text-[10px] text-white/20 font-medium uppercase tracking-tighter">
+                                                    {new Date(source.dateAdded).toLocaleDateString()}
+                                                    {source.chunkCount > 0 && <span className="ml-2 text-[#6366F1]/50">{source.chunkCount} chunks</span>}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => toggleSourceSelection(source.id)}
+                                                    className={cn(
+                                                        "px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all",
+                                                        selectedSourceIds.has(source.id)
+                                                            ? "bg-[#6366F1] text-white shadow-lg shadow-[#6366F1]/20"
+                                                            : "bg-white/5 text-white/20 hover:bg-white/10"
+                                                    )}
+                                                >
+                                                    {selectedSourceIds.has(source.id) ? "✓ Selected" : "Select"}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ));
+                                })()}
+                            </div>
+                            {sources.length > 8 && !sourceSearchQuery && (
+                                <button
+                                    onClick={() => setShowAllSources(prev => !prev)}
+                                    className="w-full py-3 text-[10px] font-bold uppercase tracking-widest text-white/30 hover:text-[#6366F1] transition-colors border border-white/5 rounded-xl hover:border-[#6366F1]/30"
+                                >
+                                    {showAllSources ? `↑ Show Less` : `↓ Show All ${sources.length} Sources`}
+                                </button>
+                            )}
                         </div>
+
                     </div>
                 </motion.div>
             </div>
@@ -838,17 +958,36 @@ export function AskAI() {
                     initial={{ x: -320 }}
                     animate={{ x: 0 }}
                     exit={{ x: -320 }}
-                    className="fixed top-0 left-0 bottom-0 w-80 z-[101] bg-[#0A0A0B] border-r border-white/10 p-8 flex flex-col shadow-2xl"
+                    className="fixed top-0 left-0 bottom-0 w-85 z-[101] bg-[#0A0A0B]/95 backdrop-blur-2xl border-r border-white/10 p-8 flex flex-col shadow-2xl overflow-hidden"
                 >
-                    <div className="flex items-center justify-between mb-10">
-                        <div className="flex items-center gap-3">
-                            <History className="w-5 h-5 text-[#6366F1]" />
-                            <h2 className="text-lg font-bold tracking-tight">History</h2>
+                    {/* Beams Background for Sidebar */}
+                    <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40">
+                        <div className="absolute -top-[10%] -right-[20%] w-[80%] h-[40%] rounded-full bg-[#6366F1]/10 blur-[80px]" />
+                        <div className="absolute bottom-[20%] -left-[20%] w-[60%] h-[50%] rounded-full bg-violet-500/5 blur-[90px]" />
+                    </div>
+
+                    <div className="flex items-center justify-between mb-10 relative z-10">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center">
+                                <History className="w-5 h-5 text-[#6366F1]" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-bold tracking-tight">Intelligence</h2>
+                                <p className="text-[9px] text-white/20 font-bold uppercase tracking-[0.2em]">Conversation History</p>
+                            </div>
                         </div>
                         <button onClick={() => setSidebarOpen(false)} className="p-2 hover:bg-white/5 rounded-xl text-white/20 hover:text-white transition-all">
-                            <ChevronLeft className="w-5 h-5" />
+                            <X className="w-5 h-5" />
                         </button>
                     </div>
+
+                    <button 
+                        onClick={() => { handleNewChat(); setSidebarOpen(false); }}
+                        className="w-full py-3 px-4 mb-8 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-2xl flex items-center justify-center gap-3 transition-all shadow-lg shadow-[#6366F1]/20 group relative z-10"
+                    >
+                        <Plus className="w-4 h-4" />
+                        <span className="text-[11px] font-bold uppercase tracking-widest">New Intelligence Case</span>
+                    </button>
 
                     <div className="flex-1 overflow-y-auto space-y-3 no-scrollbar pr-2">
                         {conversations.length === 0 ? (
@@ -862,16 +1001,22 @@ export function AskAI() {
                                     key={conv.id}
                                     onClick={() => { loadConversation(conv.id); setSidebarOpen(false); }}
                                     className={cn(
-                                        "w-full flex flex-col gap-1 p-4 rounded-2xl transition-all border text-left group",
+                                        "w-full flex items-center gap-4 p-4 rounded-2xl transition-all border text-left group relative",
                                         activeConvId === conv.id 
                                             ? "bg-[#6366F1]/10 border-[#6366F1]/30 text-white" 
                                             : "bg-white/[0.02] border-white/5 text-white/40 hover:bg-white/[0.04] hover:border-white/10"
                                     )}
                                 >
-                                    <span className="text-[11px] font-bold truncate group-hover:text-white transition-colors">{conv.title}</span>
-                                    <span className="text-[9px] font-medium text-white/20 uppercase tracking-tighter">
-                                        {new Date(conv.updated_at).toLocaleDateString()}
-                                    </span>
+                                    <div className={cn(
+                                        "w-2 h-2 rounded-full",
+                                        activeConvId === conv.id ? "bg-[#6366F1]" : "bg-white/10"
+                                    )} />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-bold truncate group-hover:text-white transition-colors">{conv.title}</p>
+                                        <p className="text-[9px] font-medium text-white/20 uppercase tracking-tighter mt-0.5">
+                                            Last active: {new Date(conv.updated_at).toLocaleDateString()}
+                                        </p>
+                                    </div>
                                 </button>
                             ))
                         )}

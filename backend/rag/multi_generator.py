@@ -54,14 +54,22 @@ def _format_chunk_for_prompt(rank: int, chunk: RetrievedChunk) -> str:
         
     return f"{header}\n{chunk.chunk_text}"
 
-def build_single_source_prompt(question: str, result: MultiSourceResult, history: list[dict] | None, image_context: str | None = None) -> list[dict]:
-    system_prompt = """You are a legal information assistant for Indian law. Answer using ONLY the provided context.
-    Structure your answer as:
-    ANSWER: [clear explanation]
-    LEGAL BASIS: [exact quote from source]
-    CITATIONS: [numbered list: Document | Section/Para | Court | Date]
-    AMENDMENTS: [any amendments to cited sections]
-    Never give legal advice. State only what the law says."""
+def build_single_source_prompt(question: str, result: MultiSourceResult, history: list[dict] | None, image_context: str | None = None, is_legal: bool = False) -> list[dict]:
+    if is_legal:
+        system_prompt = """You are a legal information assistant for Indian law. Answer using ONLY the provided context.
+        Structure your answer as:
+        ANSWER: [clear explanation]
+        LEGAL BASIS: [exact quote from source]
+        CITATIONS: [numbered list: Document | Section/Para | Court | Date]
+        AMENDMENTS: [any amendments to cited sections]
+        Never give legal advice. State only what the law says."""
+    else:
+        system_prompt = """You are an expert research assistant. Answer accurately using ONLY the provided context.
+        Structure your answer as:
+        ANSWER: [clear, detailed explanation with inline citations like [Source 1]]
+        KEY CONCEPTS: [list the main concepts from the source relevant to the question]
+        CITATIONS: [numbered list: Document | Page/Section]
+        Quote directly from the source when relevant. If the context doesn't contain the answer, say so clearly."""
 
     context_parts = []
     for i, chunk in enumerate(result.all_chunks, start=1):
@@ -84,20 +92,44 @@ def build_single_source_prompt(question: str, result: MultiSourceResult, history
     messages.append({"role": "user", "content": question})
     return messages
 
-def build_comparison_prompt(question: str, result: MultiSourceResult, history: list[dict] | None, image_context: str | None = None) -> list[dict]:
-    system_prompt = """You are a legal analyst. Compare the provided sources objectively.
-    Structure your answer as:
-    QUERY: [restate what is being compared]
-    SOURCE A — {first source title}:
-    [what source A says, with exact quote]
-    SOURCE B — {second source title}:
-    [what source B says, with exact quote]
-    KEY DIFFERENCES:
-    [bullet points of substantive differences]
-    KEY SIMILARITIES:
-    [bullet points of shared principles]
-    CITATIONS: [numbered, one per claim]
-    Do not take sides. Report what each source states."""
+def build_comparison_prompt(question: str, result: MultiSourceResult, history: list[dict] | None, image_context: str | None = None, is_legal: bool = False) -> list[dict]:
+    if is_legal:
+        system_prompt = """You are a legal analyst. Compare the provided sources objectively.
+        Structure your answer as:
+        QUERY: [restate what is being compared]
+        SOURCE A — {first_source}:
+        [what source A says, with exact quote]
+        SOURCE B — {second_source}:
+        [what source B says, with exact quote]
+        KEY DIFFERENCES:
+        [bullet points of substantive differences]
+        KEY SIMILARITIES:
+        [bullet points of shared principles]
+        CITATIONS: [numbered, one per claim]
+        Do not take sides. Report what each source states."""
+    else:
+        system_prompt = """You are a research analyst. Compare the provided sources objectively and thoroughly.
+        Structure your answer EXACTLY as:
+
+        ## Comparison Overview
+        [1-2 sentence summary of what is being compared]
+
+        ## {first_source}
+        [Key points and explanation from this source, with page references]
+
+        ## {second_source}
+        [Key points and explanation from this source, with page references]
+
+        ## Key Differences
+        [Bullet points of the most important differences between the sources]
+
+        ## Key Similarities
+        [Bullet points of shared concepts or principles]
+
+        ## Citations
+        [Numbered list, one per factual claim]
+
+        Be specific. Quote directly from sources. Do not introduce outside knowledge."""
 
     context_parts = []
     for title, chunks in result.source_groups.items():
@@ -106,12 +138,16 @@ def build_comparison_prompt(question: str, result: MultiSourceResult, history: l
     
     context_block = "\n\n".join(context_parts)
     
-    # Try to fill placeholders in system prompt if we have at least 2 sources
+    # Fill placeholders in system prompt
     titles = list(result.source_groups.keys())
     s_prompt = system_prompt
     if len(titles) >= 2:
-        s_prompt = s_prompt.replace("{first source title}", titles[0])
-        s_prompt = s_prompt.replace("{second source title}", titles[1])
+        s_prompt = s_prompt.replace("{first_source}", titles[0]).replace("{second_source}", titles[1])
+    elif len(titles) == 1:
+        s_prompt = s_prompt.replace("{first_source}", titles[0]).replace("{second_source}", "")
+    # Also handle old-style placeholders
+    if len(titles) >= 2:
+        s_prompt = s_prompt.replace("{first source title}", titles[0]).replace("{second source title}", titles[1])
     
     if image_context:
         s_prompt = f"{s_prompt}\n\n{image_context}"
@@ -127,8 +163,15 @@ def build_comparison_prompt(question: str, result: MultiSourceResult, history: l
     messages.append({"role": "user", "content": question})
     return messages
 
-def build_synthesis_prompt(question: str, result: MultiSourceResult, history: list[dict] | None, image_context: str | None = None) -> list[dict]:
-    system_prompt = """You are a research synthesizer. Your job is to consolidate and summarize information from MULTIPLE sources.
+def build_synthesis_prompt(question: str, result: MultiSourceResult, history: list[dict] | None, image_context: str | None = None, is_legal: bool = False) -> list[dict]:
+    if is_legal:
+        system_prompt = """You are a legal research synthesizer for Indian law. Consolidate and summarize information from MULTIPLE sources.
+        Structure your answer as:
+        CONSOLIDATED LEGAL VIEW: [comprehensive answer weaving sources]
+        BY STATUTE/CASE: [for each source, key points and citations]
+        RULES: Cite every claim. Quote exactly when mentioning sections. Do not give legal advice."""
+    else:
+        system_prompt = """You are a research synthesizer. Your job is to consolidate and summarize information from MULTIPLE sources.
 
 Structure your answer EXACTLY as:
 ## Consolidated Answer
@@ -170,7 +213,7 @@ RULES: Cite EVERY claim. Reference specific pages/sections. Do NOT guess."""
     messages.append({"role": "user", "content": question})
     return messages
 
-def generate_multi_answer(question: str, result: MultiSourceResult, history: list[dict] | None = None, image_context: str | None = None) -> GeneratedAnswer:
+def generate_multi_answer(question: str, result: MultiSourceResult, history: list[dict] | None = None, image_context: str | None = None, is_legal: bool = False) -> GeneratedAnswer:
     if not result.all_chunks:
         return GeneratedAnswer(
             answer="I searched your knowledge base but found no relevant information. \n This usually means: (1) no documents have been ingested yet, \n (2) your question doesn't match any uploaded content, or \n (3) the FAISS index is empty. \n Please upload a PDF or website first, then try again.",
@@ -180,11 +223,11 @@ def generate_multi_answer(question: str, result: MultiSourceResult, history: lis
 
     # 1. Select builder
     if result.query_intent == "comparison":
-        messages = build_comparison_prompt(question, result, history, image_context)
+        messages = build_comparison_prompt(question, result, history, image_context, is_legal=is_legal)
     elif result.query_intent == "synthesis":
-        messages = build_synthesis_prompt(question, result, history, image_context)
+        messages = build_synthesis_prompt(question, result, history, image_context, is_legal=is_legal)
     else:
-        messages = build_single_source_prompt(question, result, history, image_context)
+        messages = build_single_source_prompt(question, result, history, image_context, is_legal=is_legal)
         
     # 2. Call Groq
     try:

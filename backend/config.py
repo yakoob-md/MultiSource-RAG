@@ -36,8 +36,14 @@ FAISS_INDEX_PATH  = FAISS_DIR / "index.faiss"
 FAISS_IDMAP_PATH  = FAISS_DIR / "id_map.json"
 
 # ── Retrieval ─────────────────────────────────────────────────────────────────
-RERANKER_SCORE_THRESHOLD = -5.0   # drop chunks scoring below this
+# The ms-marco cross-encoder outputs raw logits (not probabilities).
+# Negative scores are NORMAL and do NOT mean irrelevant.
+# -12.0 is a safe floor — anything below this is genuinely unrelated noise.
+# Previous value of -5.0 was killing valid cryptography/technical content.
+RERANKER_SCORE_THRESHOLD = -12.0  # drop chunks scoring below this
 TOP_K = 8
+# If a source returns 0 chunks after threshold, take this many anyway (best-effort)
+RERANKER_FALLBACK_TOP_N = 2
 
 # ── LLM (Groq) ───────────────────────────────────────────────────────────────
 # Load the key from the environment. Will raise an error later if blank.

@@ -76,6 +76,7 @@ def _build_messages(
     chunks       : list[RetrievedChunk],
     history      : list[ChatMessage] | None = None,
     image_context: str | None = None,
+    is_legal     : bool = False,
 ) -> list[dict]:
     """
     Build the full messages array sent to Groq's chat completions API.
@@ -126,7 +127,20 @@ def _build_messages(
     context = "\n\n---\n\n".join(context_parts)
 
     # ── System message: instructions + context ────────────────────────────────
-    system_content = f"""You are an expert research assistant with deep knowledge of the uploaded documents.
+    if is_legal:
+        system_content = f"""You are a legal information assistant for Indian law. Answer using ONLY the provided context.
+
+RULES:
+1. Use the retrieved context as your ONLY source of truth.
+2. Provide exact quotes for legal basis when possible.
+3. Structure: ANSWER, LEGAL BASIS, CITATIONS (Document | Section/Para).
+4. Never give legal advice. State only what the law says.
+5. Use conversation history to resolve pronouns ("it", "that case").
+
+RETRIEVED CONTEXT:
+{context}"""
+    else:
+        system_content = f"""You are an expert research assistant with deep knowledge of the uploaded documents.
 
 Your job is to give DETAILED, ACCURATE, WELL-CITED answers based ONLY on the retrieved context below.
 
@@ -265,7 +279,8 @@ def generate_answer_stream(
         yield "I don't have any relevant information to answer this question. Please upload some documents first."
         return
 
-    messages = _build_messages(question, chunks, history, image_context=image_context)
+    is_legal = (llm_provider == "huggingface")
+    messages = _build_messages(question, chunks, history, image_context=image_context, is_legal=is_legal)
     print(f"[Generator] Streaming | model={GROQ_MODEL} | "
           f"history_turns={len(history) if history else 0} | "
           f"total_messages={len(messages)}")
@@ -324,7 +339,8 @@ def generate_answer(
         )
 
     # ── Step 1: Build messages with history ───────────────────────────────────
-    messages = _build_messages(question, chunks, history, image_context=image_context)
+    is_legal = (llm_provider == "huggingface")
+    messages = _build_messages(question, chunks, history, image_context=image_context, is_legal=is_legal)
     print(f"[Generator] Sending | model={GROQ_MODEL} | "
           f"history_turns={len(history) if history else 0} | "
           f"total_messages={len(messages)}")
