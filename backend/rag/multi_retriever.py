@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from backend.rag.retriever import retrieve, RetrievedChunk
+from backend.rag.retriever import retrieve, RetrievedChunk, fetch_image_chunk
 from backend.rag.query_classifier import QueryAnalysis, extract_source_filter
 from backend.database.connection import get_connection
 
@@ -67,12 +67,28 @@ def retrieve_multi_selected(question: str, source_ids: list[str]) -> MultiSource
 
     for sid in source_ids:
         try:
-            # min_chunks=3 guarantees each source contributes even on vague queries
-            chunks = retrieve(question, source_ids=[sid], min_chunks=3)
-            chunks = chunks[:chunks_per_source]
+            # 1. Determine source type
+            with get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT type FROM sources WHERE id = %s", (sid,))
+                s_info = cursor.fetchone()
+            
+            stype = s_info['type'] if s_info else 'pdf'
+
+            # 2. Fetch chunks based on type
+            if stype == 'image':
+                # For images, we ALWAYS want the caption if selected, regardless of vector similarity
+                img_chunk = fetch_image_chunk(sid)
+                chunks = [img_chunk] if img_chunk else []
+            else:
+                # min_chunks=3 guarantees each source contributes even on vague queries
+                chunks = retrieve(question, source_ids=[sid], min_chunks=3)
+                chunks = chunks[:chunks_per_source]
+
             if not chunks:
                 print(f"[MultiRetriever] ✗ Source {sid[:8]} returned 0 chunks even with fallback")
                 continue
+            
             title = chunks[0].source_title
             best_score = chunks[0].score
             source_groups[title] = chunks
