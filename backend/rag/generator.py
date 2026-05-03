@@ -144,6 +144,7 @@ def generate_answer_stream(
     history      : list[ChatMessage] | None = None,
     image_context: str | None = None,
     provider_name: str | None = "groq",
+    is_legal     : bool = False,
 ) -> Generator[str, None, None]:
     """
     Streaming answer generation with chat history support.
@@ -163,7 +164,7 @@ def generate_answer_stream(
         yield "I don't have any relevant information to answer this question. Please upload some documents first."
         return
 
-    is_legal = (provider_name == "huggingface")
+    is_legal = is_legal or (provider_name == "huggingface")
     messages = _build_messages_rich(question, multi_result, history, image_context=image_context, is_legal=is_legal)
     
     # ── Option 1: Groq (Native Streaming) ─────────────────────────────────────
@@ -203,7 +204,8 @@ def generate_answer(
     multi_result : MultiSourceResult,
     history      : list[ChatMessage] | None = None,
     image_context: str | None = None,
-    provider_name: str | None = "groq",
+    llm_provider : str | None = "groq",
+    is_legal     : bool = False,
 ) -> GeneratedAnswer:
     """
     Non-streaming answer generation with chat history support.
@@ -227,7 +229,7 @@ def generate_answer(
         )
 
     # ── Step 1: Build messages with history ───────────────────────────────────
-    is_legal = (provider_name == "huggingface")
+    is_legal = is_legal or (llm_provider == "huggingface")
     messages = _build_messages_rich(question, multi_result, history, image_context=image_context, is_legal=is_legal)
     print(f"[Generator] Sending | model={GROQ_MODEL} | "
           f"history_turns={len(history) if history else 0} | "

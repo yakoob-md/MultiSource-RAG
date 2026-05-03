@@ -291,7 +291,9 @@ export async function streamQueryRag(
   onError: (err: Error) => void,
   imageId?: string,
   includeImages?: boolean,
-  llmProvider: string = "groq"
+  llmProvider: string = "groq",
+  isLegalMode: boolean = false,
+  legalFilter: string | null = null
 ): Promise<void> {
   let response: Response;
   try {
@@ -306,6 +308,8 @@ export async function streamQueryRag(
         image_id: imageId || null,
         include_images: includeImages || false,
         llm_provider: llmProvider,
+        is_legal_mode: isLegalMode,
+        legal_filter: legalFilter,
       }),
     });
   } catch (err) {

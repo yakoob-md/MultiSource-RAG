@@ -57,7 +57,9 @@ def build_single_source_prompt(question: str, result: MultiSourceResult, history
     messages = [{"role": "system", "content": f"{system_prompt}\n\n{image_context or ''}\n\nRETRIEVED CONTEXT:\n{context_block}"}]
     if history:
         valid_history = [m for m in history if m.get('role') in ('user', 'assistant') and m.get('content')]
-        messages.extend(valid_history[-12:])
+        # If legal, keep history very short to save context space for long law books
+        history_limit = 3 if is_legal else 12
+        messages.extend(valid_history[-history_limit:])
     messages.append({"role": "user", "content": question})
     return messages
 
@@ -84,7 +86,9 @@ def build_comparison_prompt(question: str, result: MultiSourceResult, history: l
     messages = [{"role": "system", "content": f"{s_prompt}\n\n{image_context or ''}\n\nRETRIEVED CONTEXT:\n{'\n\n'.join(context_parts)}"}]
     if history:
         valid_history = [m for m in history if m.get('role') in ('user', 'assistant') and m.get('content')]
-        messages.extend(valid_history[-12:])
+        # If legal, keep history very short to save context space for long law books
+        history_limit = 3 if is_legal else 12
+        messages.extend(valid_history[-history_limit:])
     messages.append({"role": "user", "content": question})
     return messages
 
@@ -104,6 +108,8 @@ def build_synthesis_prompt(question: str, result: MultiSourceResult, history: li
     messages = [{"role": "system", "content": f"{system_prompt}\n\n{image_context or ''}\n\nRETRIEVED CONTEXT:\n{'\n\n'.join(context_parts)}"}]
     if history:
         valid_history = [m for m in history if m.get('role') in ('user', 'assistant') and m.get('content')]
-        messages.extend(valid_history[-12:])
+        # If legal, keep history very short to save context space for long law books
+        history_limit = 3 if is_legal else 12
+        messages.extend(valid_history[-history_limit:])
     messages.append({"role": "user", "content": question})
     return messages

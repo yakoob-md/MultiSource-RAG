@@ -32,6 +32,8 @@ class QueryRequest(BaseModel):
     image_id        : str | None = None
     include_images  : bool = False
     llm_provider    : str | None = "groq"
+    is_legal_mode   : bool = False
+    legal_filter    : str | None = None # "statute", "judgment", or None
 
 
 def _history_to_dicts(history: list[ChatMessageModel] | None) -> list[dict] | None:
@@ -243,8 +245,15 @@ def query(req: QueryRequest):
         augmented_history = [{"role": "system", "content": image_context_block}] + augmented_history
 
     try:
-        is_legal = (req.llm_provider == "huggingface")
-        result = generate_answer(req.question, multi_result, history=augmented_history, image_context=image_context_block, llm_provider=req.llm_provider)
+        is_legal = req.is_legal_mode or (req.llm_provider == "huggingface")
+        result = generate_answer(
+            req.question, 
+            multi_result, 
+            history=augmented_history, 
+            image_context=image_context_block, 
+            llm_provider=req.llm_provider,
+            is_legal=is_legal
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
@@ -341,7 +350,15 @@ def query_stream(req: QueryRequest):
         # ── Token stream ─────────────────────────────────────────────────────
         collected = []
         try:
-            for token in generate_answer_stream(req.question, multi_result, history=augmented_history, image_context=image_context_block, llm_provider=req.llm_provider):
+            is_legal = req.is_legal_mode or (req.llm_provider == "huggingface")
+            for token in generate_answer_stream(
+                req.question, 
+                multi_result, 
+                history=augmented_history, 
+                image_context=image_context_block, 
+                provider_name=req.llm_provider,
+                is_legal=is_legal
+            ):
                 collected.append(token)
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
         except Exception as e:

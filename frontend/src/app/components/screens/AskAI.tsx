@@ -748,7 +748,6 @@ export function AskAI() {
                       className="bg-transparent border-none text-[10px] font-bold uppercase tracking-widest text-white/40 focus:outline-none cursor-pointer group-hover:text-white transition-colors"
                     >
                       <option value="groq" className="bg-[#0A0A0B]">General Intelligence</option>
-                      <option value="huggingface" className="bg-[#0A0A0B]">Legal Specialist AI</option>
                     </select>
                   </div>
                 </div>
