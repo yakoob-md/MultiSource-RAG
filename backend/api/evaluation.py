@@ -26,13 +26,14 @@ _jobs: dict[str, dict[str, Any]] = {}
 
 class EvalStartRequest(BaseModel):
     n_questions: int = 15  # How many test questions to evaluate (5-30 recommended)
+    agentic_mode: bool = False  # Whether to use the deep research pipeline
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Background worker
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _run_eval_job(job_id: str, n_questions: int):
+def _run_eval_job(job_id: str, n_questions: int, use_agentic: bool = False):
     """Runs in a background thread. Updates _jobs[job_id] progressively."""
     _jobs[job_id]["status"] = "running"
     _jobs[job_id]["progress"] = {"current": 0, "total": n_questions, "message": "Starting..."}
@@ -43,10 +44,27 @@ def _run_eval_job(job_id: str, n_questions: int):
         from backend.rag.multi_retriever import MultiSourceResult
         from backend.rag.generator import generate_answer, _build_citations
         from backend.api.query import _safe_classify, _do_retrieve
+        from backend.rag.agent_workflow import run_agentic_workflow
 
         def retriever_fn(question: str) -> MultiSourceResult:
             analysis = _safe_classify(question)
-            return _do_retrieve(question, None, analysis)
+            
+            # Normal retrieval function
+            def base_retriever(q, sids):
+                return _do_retrieve(q, sids, analysis)
+
+            if use_agentic:
+                # Use the agentic research workflow
+                multi_result, _ = run_agentic_workflow(
+                    question=question,
+                    retriever_fn=base_retriever,
+                    source_ids=None,
+                    is_legal=False # Default to false for generic eval
+                )
+                return multi_result
+            else:
+                # Direct retrieval
+                return base_retriever(question, None)
 
         def generator_fn(question: str, multi_result: MultiSourceResult) -> str:
             try:
@@ -56,10 +74,11 @@ def _run_eval_job(job_id: str, n_questions: int):
                 return f"[Generation error: {e}]"
 
         def progress_cb(current: int, total: int, msg: str):
+            mode_prefix = "[DEEP] " if use_agentic else "[NORMAL] "
             _jobs[job_id]["progress"] = {
                 "current": current,
                 "total": total,
-                "message": msg,
+                "message": mode_prefix + msg,
             }
 
         result = run_evaluation(
@@ -102,7 +121,7 @@ def start_evaluation(req: EvalStartRequest):
     job_id = str(uuid.uuid4())
     _jobs[job_id] = {"status": "queued", "progress": {}, "result": None}
 
-    t = threading.Thread(target=_run_eval_job, args=(job_id, n), daemon=True)
+    t = threading.Thread(target=_run_eval_job, args=(job_id, n, req.agentic_mode), daemon=True)
     t.start()
 
     return {"job_id": job_id, "status": "queued", "n_questions": n}

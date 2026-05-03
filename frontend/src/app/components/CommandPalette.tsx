@@ -39,6 +39,7 @@ import {
   MessageSquare,
   Database,
   History,
+  BarChart3,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router";
@@ -202,6 +203,17 @@ export function CommandPalette({ onSelectHistory }: { onSelectHistory?: (id: str
       icon: <Settings className="h-3 w-3" />,
       action: () => navigateTo("/app/settings"),
       shortcut: "Alt+S",
+    },
+    {
+        id: "nav-audit",
+        title: "System Audit",
+        description: "RAGAS evaluation & performance metrics",
+        category: "Tools",
+        section: "all",
+        icon: <BarChart3 className="h-3 w-3" />,
+        action: () => navigateTo("/app/evaluate"),
+        shortcut: "Alt+E",
+        keywords: ["audit", "eval", "score", "ragas", "metrics", "performance"],
     },
     {
         id: "toggle-fullscreen",

@@ -48,9 +48,9 @@ RERANKER_FALLBACK_TOP_N = 2
 # ── LLM (Groq) ───────────────────────────────────────────────────────────────
 # Load the key from the environment. Will raise an error later if blank.
 GROQ_API_KEY    = os.getenv("GROQ_API_KEY") 
-GROQ_MODEL      = "llama-3.3-70b-versatile"
-GROQ_CLASSIFIER_MODEL = "llama-3.1-8b-instant"  # Faster, higher rate limits for classification
-GROQ_TIMEOUT    = 30
+GROQ_MODEL      = "llama-3.1-8b-instant"  # High rate limits, perfect for high-frequency testing
+GROQ_CLASSIFIER_MODEL = "llama-3.1-8b-instant" 
+GROQ_TIMEOUT    = 60
 
 # ── Fine-Tuned Model (Hybrid: Local/HF) ──────────────────────────────────────
 # Set to "local" to run on your PC, or "huggingface" to use cloud inference

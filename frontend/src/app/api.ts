@@ -411,11 +411,14 @@ export async function streamQueryRag(
 
 // ── Evaluation API ───────────────────────────────────────────────────────────
 
-export async function startEvaluation(nQuestions: number = 15): Promise<string> {
+export async function startEvaluation(nQuestions: number = 15, agenticMode: boolean = false): Promise<string> {
   const response = await fetch(`${API_BASE}/eval/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ n_questions: nQuestions }),
+    body: JSON.stringify({ 
+      n_questions: nQuestions,
+      agentic_mode: agenticMode
+    }),
   });
   if (!response.ok) {
     const error = await response.json();

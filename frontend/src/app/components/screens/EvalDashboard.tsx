@@ -12,7 +12,8 @@ import {
   Target, 
   ChevronRight,
   Database,
-  ArrowLeft
+  ArrowLeft,
+  Brain
 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { startEvaluation, getEvaluationStatus } from '../../api';
@@ -45,6 +46,7 @@ export function EvalDashboard() {
   const [result, setResult] = useState<EvalResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [nQuestions, setNQuestions] = useState(15);
+  const [useAgentic, setUseAgentic] = useState(false);
 
   // Poll for status if a job is running
   useEffect(() => {
@@ -81,7 +83,7 @@ export function EvalDashboard() {
     setResult(null);
     setStatus('running');
     try {
-      const id = await startEvaluation(nQuestions);
+      const id = await startEvaluation(nQuestions, useAgentic);
       setJobId(id);
     } catch (err: any) {
       setError(err.message);
@@ -157,6 +159,19 @@ export function EvalDashboard() {
                 className="bg-transparent border-none text-xs font-bold text-[#6366F1] focus:ring-0 w-12"
               />
             </div>
+            <button
+              onClick={() => setUseAgentic(!useAgentic)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-[10px] font-bold uppercase tracking-widest border transition-all ${
+                useAgentic 
+                  ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' 
+                  : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'
+              }`}
+              title="Test with Multi-Stage Agentic Reasoning"
+            >
+              <Brain className={`w-4 h-4 ${useAgentic ? 'animate-pulse' : ''}`} />
+              <span>Deep Research</span>
+            </button>
+
             <button 
               onClick={handleStart}
               className="px-8 py-4 rounded-2xl bg-[#6366F1] text-white text-xs font-bold uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-[#6366F1]/20 flex items-center gap-3"

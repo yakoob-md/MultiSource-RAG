@@ -443,7 +443,7 @@ export function LegalAssistant() {
                className="bg-transparent border-none text-xs font-bold uppercase tracking-widest text-white/60 focus:outline-none cursor-pointer"
              >
                <option value="huggingface" className="bg-[#0A0A0B]">Kaggle Fine-Tuned</option>
-               <option value="groq" className="bg-[#0A0A0B]">Groq 70B (Base)</option>
+               <option value="groq" className="bg-[#0A0A0B]">Groq 8B (High Speed)</option>
              </select>
           </div>
         </div>

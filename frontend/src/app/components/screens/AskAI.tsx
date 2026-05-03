@@ -323,6 +323,14 @@ export function AskAI() {
   }, []);
 
   useEffect(() => {
+    localStorage.setItem('intellex-llm-provider', llmProvider);
+  }, [llmProvider]);
+
+  useEffect(() => {
+    localStorage.setItem('intellex-agentic-mode', String(agenticMode));
+  }, [agenticMode]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingAnswer]);
   const handleNewChat = useCallback(() => {
@@ -868,7 +876,6 @@ export function AskAI() {
                       </button>
                     )}
 
-                    {/* Deep Research Toggle */}
                     <button
                       onClick={() => setAgenticMode(!agenticMode)}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all ${
@@ -881,6 +888,21 @@ export function AskAI() {
                       <Brain className={`w-3.5 h-3.5 ${agenticMode ? 'animate-pulse' : ''}`} />
                       <span>Deep Research</span>
                     </button>
+
+                    <div className="h-4 w-px bg-white/5 mx-1" />
+
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:border-[#6366F1]/30 transition-all group">
+                      <Zap className="w-3.5 h-3.5 text-[#6366F1]" />
+                      <select
+                        value={llmProvider}
+                        onChange={(e) => setLlmProvider(e.target.value)}
+                        className="bg-transparent border-none text-[10px] font-bold uppercase tracking-widest text-white/40 focus:outline-none cursor-pointer group-hover:text-white transition-colors"
+                        title="Select LLM Provider"
+                      >
+                        <option value="groq" className="bg-[#0A0A0B]">Groq 8B (Speed)</option>
+                        <option value="huggingface" className="bg-[#0A0A0B]">Kaggle Fine-Tuned</option>
+                      </select>
+                    </div>
                     <button
                       type="button"
                       onClick={() => setIsIngestionModalOpen(true)}
