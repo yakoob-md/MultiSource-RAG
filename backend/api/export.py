@@ -15,14 +15,23 @@ class ExportRequest(BaseModel):
 
 class PDFGenerator(FPDF):
     def header(self):
-        self.set_font('Arial', 'B', 12)
+        self.set_font('helvetica', 'B', 12)
         self.cell(0, 10, 'InteleX Research Memorandum', 0, 1, 'C')
         self.ln(5)
 
     def footer(self):
         self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
+        self.set_font('helvetica', 'I', 8)
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+
+import re
+
+def _clean_text(text: str) -> str:
+    """Strip emojis and non-latin characters that crash FPDF."""
+    # Remove markdown headers and emojis
+    text = text.replace('#', '')
+    # Keep only common latin characters and punctuation
+    return re.sub(r'[^\x00-\x7F]+', '', text)
 
 @router.post("/pdf")
 async def export_pdf(req: ExportRequest):
@@ -31,25 +40,26 @@ async def export_pdf(req: ExportRequest):
         pdf.add_page()
         
         # Title
-        pdf.set_font("Arial", 'B', 16)
-        pdf.multi_cell(0, 10, req.title)
+        pdf.set_font("helvetica", 'B', 16)
+        pdf.multi_cell(0, 10, _clean_text(req.title))
         pdf.ln(10)
         
         # Content
-        pdf.set_font("Arial", '', 11)
-        # Simple markdown to plain text conversion for fpdf
-        clean_content = req.content.replace('# ', '').replace('## ', '').replace('### ', '')
-        pdf.multi_cell(0, 7, clean_content)
+        pdf.set_font("helvetica", '', 11)
+        pdf.multi_cell(0, 7, _clean_text(req.content))
         
         # Citations
         if req.citations:
             pdf.ln(10)
-            pdf.set_font("Arial", 'B', 12)
+            pdf.set_font("helvetica", 'B', 12)
             pdf.cell(0, 10, 'Sources & Citations', 0, 1)
-            pdf.set_font("Arial", '', 9)
+            pdf.set_font("helvetica", '', 9)
             for i, cite in enumerate(req.citations):
-                text = f"[{i+1}] {cite.get('sourceTitle', 'Source')} - {cite.get('reference', '')}"
-                pdf.multi_cell(0, 5, text)
+                # Use .get() carefully for field names coming from frontend
+                source_title = cite.get('source_title') or cite.get('sourceTitle') or "Source"
+                ref = cite.get('reference') or ""
+                text = f"[{i+1}] {source_title} - {ref}"
+                pdf.multi_cell(0, 5, _clean_text(text))
         
         # Save to temp file
         tmp_dir = tempfile.gettempdir()
@@ -63,4 +73,5 @@ async def export_pdf(req: ExportRequest):
             media_type='application/pdf'
         )
     except Exception as e:
+        print(f"[Export] PDF Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

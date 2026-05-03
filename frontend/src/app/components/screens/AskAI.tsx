@@ -4,12 +4,12 @@ import {
   Plus, MessageSquare, Trash2, X,
   ChevronLeft, Paperclip, Image as ImageIcon,
   Database, Upload, Link as LinkIcon, Send as SendIcon, X as XIcon, Sparkles, Clock, Lock, History,
-  Search, Zap, Gavel, Brain
+  Search, Zap, Gavel, Brain, FileDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router';
 import { ChatMessage, RetrievedChunk, KnowledgeSource } from '../../types';
-import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, Conversation, uploadImage, uploadPdf, addWebsite, addYouTube } from '../../api';
+import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, Conversation, uploadImage, uploadPdf, addWebsite, addYouTube, exportToPDF } from '../../api';
 import { cn } from '../ui/utils';
 // import { CommandPalette } from '../CommandPalette';
 
@@ -598,8 +598,17 @@ export function AskAI() {
                 "max-w-[85%] rounded-3xl p-6 transition-all",
                 msg.role === 'user'
                   ? "bg-[#6366F1] text-white shadow-xl shadow-[#6366F1]/10"
-                  : "bg-white/[0.03] border border-white/5 backdrop-blur-xl"
+                  : "bg-white/[0.03] border border-white/5 backdrop-blur-xl relative group"
               )}>
+                {msg.role === 'assistant' && (
+                  <button
+                    onClick={() => exportToPDF("Research Memorandum", msg.content, msg.retrievedChunks || [])}
+                    className="absolute top-4 right-4 p-2 rounded-lg bg-white/5 border border-white/10 opacity-0 group-hover:opacity-100 transition-all hover:bg-[#6366F1]/20 hover:border-[#6366F1]/30 text-white/40 hover:text-[#6366F1]"
+                    title="Download Research Memo (PDF)"
+                  >
+                    <FileDown className="w-4 h-4" />
+                  </button>
+                )}
                 <p className="text-sm leading-relaxed whitespace-pre-line font-medium">{msg.content}</p>
 
                 {/* Rich Citation Panel — shown for assistant messages with sources */}

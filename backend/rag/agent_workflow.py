@@ -231,4 +231,6 @@ def run_agentic_workflow(
         source_count=len(source_groups),
     )
 
+    status_log.append("🖋️ Synthesizer: Drafting Professional Research Memorandum...")
+
     return result, status_log

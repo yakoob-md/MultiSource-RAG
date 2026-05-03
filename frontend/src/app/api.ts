@@ -521,3 +521,25 @@ export async function renameConversation(convId: string, title: string): Promise
 export async function deleteConversation(convId: string): Promise<void> {
   await fetch(`${API_BASE}/conversations/${convId}`, { method: 'DELETE' });
 }
+
+// ── Export API ──────────────────────────────────────────────────────────────
+
+export async function exportToPDF(title: string, content: string, citations: any[]): Promise<void> {
+  const response = await fetch(`${API_BASE}/export/pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, content, citations }),
+  });
+
+  if (!response.ok) throw new Error('Failed to export PDF');
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `InteleX_Research_${new Date().getTime()}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+}

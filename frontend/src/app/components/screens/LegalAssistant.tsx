@@ -4,12 +4,12 @@ import {
   Plus, MessageSquare, Trash2, X,
   ChevronLeft, Paperclip, Image as ImageIcon,
   Database, Upload, Link as LinkIcon, Send as SendIcon, X as XIcon, Sparkles, Clock, Lock, History,
-  Search, Zap, Gavel, Scale, Shield, ChevronUp, ChevronDown, Brain
+  Search, Zap, Gavel, Scale, Shield, ChevronUp, ChevronDown, Brain, FileDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router';
 import { ChatMessage, RetrievedChunk, KnowledgeSource } from '../../types';
-import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, Conversation, uploadImage, uploadPdf } from '../../api';
+import { streamQueryRag, fetchSources, fetchConversations, fetchConversationMessages, Conversation, uploadImage, uploadPdf, exportToPDF } from '../../api';
 import { cn } from '../ui/utils';
 
 // ── Shared UI Utilities ──────────────────────────────────────────────────────
@@ -475,8 +475,17 @@ export function LegalAssistant() {
               "max-w-[85%] rounded-3xl p-6 transition-all",
               msg.role === 'user' 
                 ? "bg-[#6366F1] text-white shadow-xl shadow-[#6366F1]/10" 
-                : "bg-white/[0.03] border border-white/5 backdrop-blur-xl"
+                : "bg-white/[0.03] border border-white/5 backdrop-blur-xl relative group"
             )}>
+              {msg.role === 'assistant' && (
+                <button
+                  onClick={() => exportToPDF("Legal Research Memorandum", msg.content, msg.retrievedChunks || [])}
+                  className="absolute top-4 right-4 p-2 rounded-lg bg-white/5 border border-white/10 opacity-0 group-hover:opacity-100 transition-all hover:bg-[#6366F1]/20 hover:border-[#6366F1]/30 text-white/40 hover:text-[#6366F1]"
+                  title="Download Legal Memo (PDF)"
+                >
+                  <FileDown className="w-4 h-4" />
+                </button>
+              )}
               <div className="flex items-center gap-2 mb-2">
                  <span className="text-[10px] font-bold uppercase tracking-widest text-white/20">{msg.role === 'user' ? 'Counsel' : 'Legal AI'}</span>
               </div>
