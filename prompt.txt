@@ -1,39 +1,289 @@
-My RAG chat UI shows nothing because streaming is broken. There are TWO streaming endpoints with conflicting response formats. Fix this completely.
-Problem: backend/api/stream.py sends {"token": "..."} and {"done": true} but backend/api/query.py sends {"type": "token", "content": "..."} and {"type": "done"}. The frontend streamQueryRag in api.ts tries to parse one format but receives the other.
-Fix 1: Deprecate stream.py
-In backend/main.py, comment out app.include_router(stream_router). Add a comment: # DEPRECATED: use /query-stream from query.py instead
-Fix 2: Standardize query.py streaming format
-In backend/api/query.py, the /query-stream endpoint's event_stream() generator must send EXACTLY this format:
-python# Meta event (first):
-yield f"data: {json.dumps({'type': 'meta', 'chatId': chat_id, 'conversationId': conv_id, 'citations': citations_out, 'retrievedChunks': chunks_out})}\n\n"
+You are a senior full-stack AI engineer and UX engineer specializing in RAG systems, chat memory, and ChatGPT-like interfaces.
 
-# Token events:
-yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+I will provide my repository. Your job is to DEBUG, FIX, and IMPLEMENT missing features so that the system behaves like ChatGPT.
 
-# Done event (last):
-yield f"data: {json.dumps({'type': 'done'})}\n\n"
+---
 
-# Error event (on exception):
-yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-Fix 3: Fix streamQueryRag in frontend/src/app/api.ts
-The function currently checks parsed.token (old format). Update the SSE parser to:
-typescriptif (parsed.type === 'error') { onError(new Error(parsed.message)); return; }
-if (parsed.type === 'meta') {
-  // map citations and retrievedChunks (same mapping as before)
-  onMeta({ chatId: parsed.chatId, conversationId: parsed.conversationId, citations, retrievedChunks });
-}
-if (parsed.type === 'token' && parsed.content) { onToken(parsed.content); }
-if (parsed.type === 'done') { return; }
-Fix 4: Update AskAI.tsx
-The onMeta callback receives conversationId now. Store it:
-typescript(meta) => {
-  capturedCitations = meta.citations || [];
-  capturedChunks = meta.retrievedChunks || [];
-  if (meta.conversationId && !convId) {
-    convId = meta.conversationId;
-    setActiveConvId(convId);
-  }
-  setSelectedChunks(capturedChunks);
-}
-Fix 5: Add connection error handling
-Wrap the fetch call in streamQueryRag with a try/catch that checks if the server is reachable. If fetch throws TypeError: Failed to fetch, call onError(new Error("Cannot connect to server. Is the backend running on port 8000?")).
+# 🚨 CURRENT PROBLEMS (MUST FIX)
+
+## 1. CONTEXT MEMORY IS BROKEN
+
+Problem:
+
+* When I ask: “What does appellant mean?”
+* Then follow-up: “Explain with example”
+* System fails → does NOT remember previous context
+
+---
+
+### REQUIREMENT:
+
+* Each chat must maintain FULL context
+* Follow-up questions must work naturally
+* LLM must understand previous conversation
+
+---
+
+### FIX REQUIRED:
+
+You must:
+
+1. Ensure chat history is correctly stored in DB:
+
+   * conversation_id
+   * role (user/assistant)
+   * message
+
+2. When generating response:
+
+   * Fetch previous messages (at least last 3–5 turns)
+   * Inject into prompt BEFORE new query
+
+3. Prompt format MUST be:
+
+SYSTEM PROMPT
+CHAT HISTORY (ordered)
+RAG CONTEXT
+USER QUERY
+
+4. Ensure correct formatting:
+
+   * role-based messages
+   * no broken ordering
+
+---
+
+## 2. CHAT HISTORY + RESUME CHAT (CRITICAL)
+
+Problem:
+
+* I cannot properly resume chats with context intact
+
+---
+
+### REQUIREMENT:
+
+* Chat history sidebar must:
+
+  * Show all chats
+  * Allow reopening any chat
+  * Restore full context
+
+---
+
+### FIX REQUIRED:
+
+* When chat is clicked:
+
+  * Load messages from DB
+  * Set active conversation
+  * Continue conversation seamlessly
+
+* Ensure:
+
+  * No context reset
+  * No missing messages
+
+---
+
+## 3. FILE / IMAGE UPLOAD IN CHAT (LIKE CHATGPT)
+
+Problem:
+
+* Cannot upload directly in chat UI
+* No feedback during upload
+
+---
+
+### REQUIREMENT:
+
+* Upload button inside chat input
+* Support:
+
+  * Images
+  * PDFs (optional)
+
+---
+
+### UX REQUIRED:
+
+* Show:
+
+  * “Uploading…” state
+  * Preview of uploaded file
+  * Remove option
+
+---
+
+### BACKEND:
+
+* Handle file upload endpoint
+* Store temporarily
+* Pass image to model pipeline
+
+---
+
+## 4. MULTI-MODAL CONTEXT IN CHAT
+
+Requirement:
+
+When user uploads image + asks question:
+
+Pipeline must be:
+
+Image → caption → merge with query → RAG → LLM
+
+Ensure:
+
+* Image context is included in prompt
+* Works with follow-up queries
+
+---
+
+## 5. UI ISSUES (CRITICAL)
+
+### ❌ Problem 1:
+
+Latest message not visible (chat overflow broken)
+
+### FIX:
+
+* Chat container must:
+
+  * Auto scroll to bottom
+  * Not be hidden behind input box
+  * Proper padding at bottom
+
+---
+
+### ❌ Problem 2:
+
+Layout breaking / overflow
+
+### FIX:
+
+* Fix flexbox layout
+* Ensure:
+
+  * Scrollable chat area
+  * Sticky input box
+  * No overlap
+
+---
+
+## 6. LEGAL AI UI ENHANCEMENT
+
+When clicking Legal AI section:
+
+### Improve:
+
+* Layout spacing
+* Resource display cards
+* Selection UI
+* Overall polish
+
+---
+
+### Must include:
+
+* Clean grid layout
+* Proper margins/padding
+* Better typography
+* Clear section hierarchy
+
+---
+
+## 7. SIDEBAR DESIGN (VERY IMPORTANT)
+
+Requirement:
+
+* Apply **BEMAS-style background theme** to:
+
+  * Sidebar (chat history)
+  * Legal AI section
+  * Entire app
+
+---
+
+### EXCEPTION:
+
+* Do NOT apply on landing page
+
+---
+
+### Ensure:
+
+* Consistent theme
+* Professional look
+* No visual clutter
+
+---
+
+## 8. PERFORMANCE + UX FIXES
+
+Ensure:
+
+* Smooth chat experience
+* No UI flicker
+* Fast response rendering
+* Proper loading indicators
+
+---
+
+# 🔧 YOUR TASK
+
+## STEP 1: DEBUG
+
+* Identify why context is not being passed
+* Identify why chat resume fails
+* Identify UI layout bugs
+
+---
+
+## STEP 2: FIX BACKEND
+
+* Chat history retrieval
+* Prompt construction
+* Context injection
+* File upload handling
+
+---
+
+## STEP 3: FIX FRONTEND
+
+* Chat layout
+* Sidebar
+* Upload UI
+* Auto-scroll behavior
+
+---
+
+## STEP 4: IMPLEMENT FEATURES
+
+* Multi-modal chat
+* Upload preview
+* Persistent chat context
+
+---
+
+## STEP 5: TESTING
+
+Provide test cases:
+
+1. Ask definition → follow-up question → should work
+2. Reload chat → context still present
+3. Upload image → ask question → correct response
+4. Long chat → scroll works correctly
+
+---
+
+## ⚠️ STRICT RULES
+
+* Do NOT give generic advice
+* Provide exact code changes
+* Mention file names and functions
+* Ensure production-level quality
+
+---
+
+Now analyze my repo and fix EVERYTHING step-by-step.

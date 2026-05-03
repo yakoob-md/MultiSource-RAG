@@ -77,7 +77,9 @@ def build_single_source_prompt(question: str, result: MultiSourceResult, history
     ]
     
     if history:
-        messages.extend(history[-6:]) # Keep last 3 turns
+        # CRITICAL: Only inject user/assistant roles — system messages break Groq API
+        valid_history = [m for m in history if m.get('role') in ('user', 'assistant') and m.get('content')]
+        messages.extend(valid_history[-12:])  # Last 6 turns = 12 messages
         
     messages.append({"role": "user", "content": question})
     return messages
@@ -119,26 +121,37 @@ def build_comparison_prompt(question: str, result: MultiSourceResult, history: l
     ]
     
     if history:
-        messages.extend(history[-6:])
+        valid_history = [m for m in history if m.get('role') in ('user', 'assistant') and m.get('content')]
+        messages.extend(valid_history[-12:])  # Last 6 turns
         
     messages.append({"role": "user", "content": question})
     return messages
 
 def build_synthesis_prompt(question: str, result: MultiSourceResult, history: list[dict] | None, image_context: str | None = None) -> list[dict]:
-    system_prompt = """You are synthesizing information across multiple legal sources.
-    Structure your answer as:
-    SYNTHESIS:
-    [2-3 paragraph summary of common themes and information across sources]
-    BY SOURCE:
-    {for each source: 2-3 sentence summary of what that source contributes}
-    COMMON THEMES: [bullet list]
-    DIVERGENCES: [where sources differ, if any]
-    CITATIONS: [numbered]"""
+    system_prompt = """You are a research synthesizer. Your job is to consolidate and summarize information from MULTIPLE sources.
+
+Structure your answer EXACTLY as:
+## Consolidated Answer
+[A comprehensive 2-3 paragraph answer that weaves information from ALL sources]
+
+## By Source
+[For each source: source name in bold, then 2-3 key points from that source with page/section references]
+
+## Common Themes
+[Bullet list of themes found across sources]
+
+## Key Differences
+[Where sources differ or contradict, if any]
+
+## Citations
+[Numbered list with source title and reference for each claim]
+
+RULES: Cite EVERY claim. Reference specific pages/sections. Do NOT guess."""
 
     context_parts = []
     for title, chunks in result.source_groups.items():
-        # Just use top 2 chunks per source for synthesis to keep context balanced and concise
-        group_context = "\n".join([_format_chunk_for_prompt(i+1, c) for i, c in enumerate(chunks[:2])])
+        # Use top 4 chunks per source for better coverage
+        group_context = "\n".join([_format_chunk_for_prompt(i+1, c) for i, c in enumerate(chunks[:4])])
         context_parts.append(f"=== SOURCE: {title} ===\n{group_context}")
         
     context_block = "\n\n".join(context_parts)
@@ -151,7 +164,8 @@ def build_synthesis_prompt(question: str, result: MultiSourceResult, history: li
     ]
     
     if history:
-        messages.extend(history[-6:])
+        valid_history = [m for m in history if m.get('role') in ('user', 'assistant') and m.get('content')]
+        messages.extend(valid_history[-12:])
         
     messages.append({"role": "user", "content": question})
     return messages

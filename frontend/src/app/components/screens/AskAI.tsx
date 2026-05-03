@@ -273,9 +273,11 @@ export function AskAI() {
 
   const loadConversation = useCallback(async (convId: string) => {
     setActiveConvId(convId);
-    (window as any).currentConversationId = convId; // Sync for API context
+    (window as any).currentConversationId = convId;
     setMessages([]);
     setSelectedChunks([]);
+    setError(null);
+    setSidebarOpen(false); // Auto-close sidebar after selection
     try {
       const data = await fetchConversationMessages(convId);
       const rebuilt: ChatMessage[] = [];
@@ -286,27 +288,35 @@ export function AskAI() {
           content: m.question,
           timestamp: new Date(m.createdAt),
         });
+        // Build readable chunk refs from sourcesUsed IDs
+        const chunkRefs: RetrievedChunk[] = m.sourcesUsed
+          ? m.sourcesUsed.map((sid: string) => {
+              // Try to resolve source title from loaded sources list
+              const found = sources.find(s => s.id === sid);
+              return {
+                id: sid,
+                sourceId: sid,
+                sourceName: found?.title || 'Source',
+                sourceType: (found?.type as any) || 'pdf',
+                text: '',
+                similarityScore: 1,
+                language: 'EN' as const
+              };
+            })
+          : [];
         rebuilt.push({
           id: `ai-${m.id}`,
           role: 'assistant',
           content: m.answer,
           timestamp: new Date(m.createdAt),
-          retrievedChunks: m.sourcesUsed ? m.sourcesUsed.map((s: string) => ({
-            id: s, 
-            sourceId: s, 
-            sourceName: s, 
-            sourceType: 'pdf' as const, 
-            text: 'Chunk loaded from history', 
-            similarityScore: 1,
-            language: 'EN' as const
-          })) : [],
+          retrievedChunks: chunkRefs,
         });
       }
       setMessages(rebuilt);
     } catch {
       setError('Failed to load conversation');
     }
-  }, []);
+  }, [sources]);
 
   // ── Effects ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -524,7 +534,18 @@ export function AskAI() {
               </p>
             </div>
           )}
-          <div ref={messagesEndRef} className="h-20" />
+
+          {/* Error message */}
+          {error && (
+            <div className="flex justify-start">
+              <div className="max-w-[85%] rounded-2xl p-4 bg-red-500/10 border border-red-500/20">
+                <p className="text-sm text-red-400 font-medium">⚠️ {error}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Bottom spacer — tall enough to clear the fixed input bar */}
+          <div ref={messagesEndRef} className="h-56" />
         </div>
 
         {/* Initial Centered State */}
@@ -567,11 +588,17 @@ export function AskAI() {
           )}
         </AnimatePresence>
 
-        {/* Unified Input Bar */}
+        {/* Unified Input Bar — fixed to bottom when chatting */}
         <div className={cn(
-            "w-full max-w-3xl mx-auto px-6 pb-12 transition-all duration-700",
-            isInitial ? "translate-y-0" : "fixed bottom-0 left-1/2 -translate-x-1/2 translate-y-0 z-50 px-4"
+            "w-full max-w-3xl mx-auto transition-all duration-700",
+            isInitial
+              ? "px-6 pb-12"
+              : "fixed bottom-0 left-1/2 -translate-x-1/2 z-50 px-4 pb-6 w-full max-w-3xl"
         )}>
+          {/* Gradient fade behind input bar — prevents text bleed-through */}
+          {!isInitial && (
+            <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/90 to-transparent pointer-events-none -z-10 rounded-t-2xl" />
+          )}
            <div className="relative group">
               {/* Image Preview inside bar */}
               <AnimatePresence>
