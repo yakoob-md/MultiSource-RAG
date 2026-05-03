@@ -59,7 +59,7 @@ export function KnowledgeSources() {
         {/* Header */}
         <div className="mb-8 flex items-start justify-between">
           <div>
-            <h1 className="text-3xl text-gray-900 dark:text-[#F8FAFC] mb-2">Knowledge Sources</h1>
+            <h1 className="text-3xl text-white mb-2">Knowledge Sources</h1>
             <p className="text-gray-600 dark:text-gray-400">
               Manage and organize your ingested sources
             </p>
@@ -67,7 +67,7 @@ export function KnowledgeSources() {
           <button
             onClick={loadSources}
             disabled={isLoading}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-[#1E293B] border border-gray-300 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-300 hover:border-[#6366F1] transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 text-sm text-white hover:border-[#6366F1] transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
@@ -83,7 +83,7 @@ export function KnowledgeSources() {
               placeholder="Search sources..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 rounded-xl bg-white dark:bg-[#1E293B] border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-[#F8FAFC] placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
+              className="w-full pl-12 pr-4 py-3 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
             />
           </div>
 
@@ -91,7 +91,7 @@ export function KnowledgeSources() {
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value as SourceType | 'all')}
-              className="px-4 py-3 rounded-xl bg-white dark:bg-[#1E293B] border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
+              className="px-4 py-3 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
             >
               <option value="all">All Types</option>
               <option value="pdf">PDF</option>
@@ -102,7 +102,7 @@ export function KnowledgeSources() {
             <select
               value={filterLanguage}
               onChange={(e) => setFilterLanguage(e.target.value as Language | 'all')}
-              className="px-4 py-3 rounded-xl bg-white dark:bg-[#1E293B] border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
+              className="px-4 py-3 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
             >
               <option value="all">All Languages</option>
               <option value="EN">English</option>

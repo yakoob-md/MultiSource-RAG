@@ -60,7 +60,7 @@ export function AddWebsite() {
       <div className="max-w-4xl mx-auto p-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl text-gray-900 dark:text-[#F8FAFC] mb-2">Add Website</h1>
+          <h1 className="text-3xl text-white mb-2">Add Website</h1>
           <p className="text-gray-600 dark:text-gray-400">
             Add web pages to your knowledge base
           </p>
@@ -80,7 +80,7 @@ export function AddWebsite() {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleFetchPreview()}
-                className="w-full pl-12 pr-4 py-3 rounded-xl bg-white dark:bg-[#1E293B] border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-[#F8FAFC] placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
+                className="w-full pl-12 pr-4 py-3 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
               />
             </div>
             <button
@@ -100,13 +100,13 @@ export function AddWebsite() {
         {/* Website Preview */}
         {preview && (
           <div className="space-y-6">
-            <div className="p-6 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700">
+            <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10">
               <div className="flex items-start gap-4 mb-4">
                 <div className="p-3 rounded-xl bg-green-500/10">
                   <Globe className="w-6 h-6 text-green-600 dark:text-green-400" />
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-xl text-gray-900 dark:text-[#F8FAFC] mb-1">
+                  <h2 className="text-xl text-white mb-1">
                     {preview.result?.title || preview.title}
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400">{preview.domain}</p>
@@ -150,7 +150,7 @@ export function AddWebsite() {
             </div>
 
             {(preview.status === 'processing' || preview.status === 'completed') && (
-              <div className="p-6 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700">
+              <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10">
                 <h3 className="text-lg text-gray-900 dark:text-[#F8FAFC] mb-4">Processing Details</h3>
                 <div className="space-y-3">
                   <ProcessingStep label="Fetching content" completed={true} />
@@ -180,7 +180,7 @@ export function AddWebsite() {
         )}
 
         {!preview && !isLoading && (
-          <div className="p-6 rounded-2xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+          <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10">
             <h3 className="text-sm text-gray-900 dark:text-[#F8FAFC] mb-3">How it works</h3>
             <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
               <li className="flex items-start gap-2"><span className="text-[#6366F1] mt-1">•</span><span>Enter the URL of a web page you want to add to your knowledge base</span></li>

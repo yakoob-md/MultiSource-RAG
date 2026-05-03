@@ -54,7 +54,7 @@ export function QueryHistory() {
 
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl text-gray-900 dark:text-[#F8FAFC] mb-2">Query History</h1>
+          <h1 className="text-3xl text-white mb-2">Query History</h1>
           <p className="text-gray-600 dark:text-gray-400">
             Review your past questions and AI responses
           </p>
@@ -74,7 +74,7 @@ export function QueryHistory() {
               placeholder="Search queries..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 rounded-xl bg-white dark:bg-[#1E293B] border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-[#F8FAFC] placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
+              className="w-full pl-12 pr-4 py-3 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
             />
           </div>
         </div>
@@ -97,18 +97,18 @@ export function QueryHistory() {
               return (
                 <div
                   key={entry.id}
-                  className="rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-all"
+                  className="rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 overflow-hidden hover:shadow-lg transition-all"
                 >
                   <button
                     onClick={() => setSelectedId(isExpanded ? null : entry.id)}
-                    className="w-full p-6 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                    className="w-full p-6 text-left hover:bg-white/5 transition-colors"
                   >
                     <div className="flex items-start gap-4">
                       <div className="p-3 rounded-xl bg-[#6366F1]/10">
                         <MessageSquare className="w-5 h-5 text-[#6366F1]" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-gray-900 dark:text-[#F8FAFC] mb-2">
+                        <p className="text-white mb-2">
                           {entry.question}
                         </p>
                         <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
@@ -129,11 +129,11 @@ export function QueryHistory() {
                   </button>
 
                   {isExpanded && (
-                    <div className="border-t border-gray-200 dark:border-gray-700 p-6 bg-gray-50 dark:bg-gray-800/50">
+                    <div className="border-t border-white/10 p-6 bg-white/5">
                       <h3 className="text-sm text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">
                         AI Response
                       </h3>
-                      <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line">
+                      <p className="text-sm text-white/80 leading-relaxed whitespace-pre-line">
                         {entry.answer}
                       </p>
                     </div>
@@ -167,7 +167,7 @@ export function QueryHistory() {
                 >
                   <button
                     onClick={() => setSelectedId(isExpanded ? null : query.id)}
-                    className="w-full p-6 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                    className="w-full p-6 text-left hover:bg-white/5 transition-colors"
                   >
                     <div className="flex items-start gap-4">
                       <div className="p-3 rounded-xl bg-[#6366F1]/10">
@@ -193,7 +193,7 @@ export function QueryHistory() {
                   </button>
 
                   {isExpanded && response && (
-                    <div className="border-t border-gray-200 dark:border-gray-700 p-6 bg-gray-50 dark:bg-gray-800/50">
+                    <div className="border-t border-white/10 p-6 bg-white/5">
                       <h3 className="text-sm text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">
                         AI Response
                       </h3>

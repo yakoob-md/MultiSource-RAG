@@ -27,7 +27,7 @@ export function Settings() {
       <div className="max-w-4xl mx-auto p-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl text-gray-900 dark:text-[#F8FAFC] mb-2">Settings</h1>
+          <h1 className="text-3xl text-white mb-2">Settings</h1>
           <p className="text-gray-600 dark:text-gray-400">
             Manage your preferences and system configuration
           </p>
@@ -35,7 +35,7 @@ export function Settings() {
 
         <div className="space-y-6">
           {/* Appearance */}
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700">
+          <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10">
             <div className="flex items-start gap-4 mb-4">
               {theme === 'light' ? (
                 <Sun className="w-5 h-5 text-gray-600 dark:text-gray-400 mt-0.5" />
@@ -43,7 +43,7 @@ export function Settings() {
                 <Moon className="w-5 h-5 text-gray-600 dark:text-gray-400 mt-0.5" />
               )}
               <div className="flex-1">
-                <h3 className="text-lg text-gray-900 dark:text-[#F8FAFC] mb-1">Appearance</h3>
+                <h3 className="text-lg text-white mb-1">Appearance</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                   Customize the visual theme of the application
                 </p>
@@ -77,11 +77,11 @@ export function Settings() {
           </div>
 
           {/* Language Settings */}
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700">
+          <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10">
             <div className="flex items-start gap-4">
               <Globe className="w-5 h-5 text-gray-600 dark:text-gray-400 mt-0.5" />
               <div className="flex-1">
-                <h3 className="text-lg text-gray-900 dark:text-[#F8FAFC] mb-1">Language Detection</h3>
+                <h3 className="text-lg text-white mb-1">Language Detection</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                   Configure automatic language detection for ingested sources
                 </p>
@@ -103,11 +103,11 @@ export function Settings() {
           </div>
 
           {/* RAG Settings */}
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700">
+          <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10">
             <div className="flex items-start gap-4">
               <Zap className="w-5 h-5 text-gray-600 dark:text-gray-400 mt-0.5" />
               <div className="flex-1">
-                <h3 className="text-lg text-gray-900 dark:text-[#F8FAFC] mb-1">RAG Configuration</h3>
+                <h3 className="text-lg text-white mb-1">RAG Configuration</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                   Fine-tune retrieval and generation parameters
                 </p>
@@ -151,11 +151,11 @@ export function Settings() {
           </div>
 
           {/* Notifications */}
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700">
+          <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10">
             <div className="flex items-start gap-4">
               <Bell className="w-5 h-5 text-gray-600 dark:text-gray-400 mt-0.5" />
               <div className="flex-1">
-                <h3 className="text-lg text-gray-900 dark:text-[#F8FAFC] mb-1">Notifications</h3>
+                <h3 className="text-lg text-white mb-1">Notifications</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                   Manage notification preferences
                 </p>
@@ -177,11 +177,11 @@ export function Settings() {
           </div>
 
           {/* Database */}
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700">
+          <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10">
             <div className="flex items-start gap-4">
               <Database className="w-5 h-5 text-gray-600 dark:text-gray-400 mt-0.5" />
               <div className="flex-1">
-                <h3 className="text-lg text-gray-900 dark:text-[#F8FAFC] mb-1">Vector Database</h3>
+                <h3 className="text-lg text-white mb-1">Vector Database</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                   Manage your knowledge base storage
                 </p>

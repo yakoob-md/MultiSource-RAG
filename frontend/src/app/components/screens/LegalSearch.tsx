@@ -54,13 +54,13 @@ export function LegalSearch() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-[#0F172A] overflow-y-auto">
+    <div className="h-full flex flex-col overflow-y-auto">
       {/* Header */}
-      <div className="px-8 py-10 bg-gray-50 dark:bg-[#1E293B] border-b border-gray-200 dark:border-gray-800 drop-shadow-sm">
+      <div className="px-8 py-10 bg-white/5 backdrop-blur-md border-b border-white/10 drop-shadow-sm">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center gap-3 mb-2">
             <Scale className="w-8 h-8 text-[#6366F1]" />
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-[#F8FAFC]">Indian Legal Assistant</h1>
+            <h1 className="text-3xl font-bold text-white">Indian Legal Assistant</h1>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2 font-medium">
             <Shield className="w-4 h-4" /> Powered by IPC, CrPC, Constitution, and Supreme Court Judgments
@@ -77,7 +77,7 @@ export function LegalSearch() {
             </div>
             <input
               type="text"
-              className="block w-full pl-12 pr-4 py-4 md:text-lg border-2 border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-[#0F172A] focus:bg-white dark:focus:bg-[#1E293B] focus:border-[#6366F1] focus:ring-4 focus:ring-[#6366F1]/10 text-gray-900 dark:text-gray-100 placeholder-gray-400 transition-all shadow-sm outline-none"
+              className="block w-full pl-12 pr-4 py-4 md:text-lg border-2 border-white/10 rounded-xl bg-white/5 backdrop-blur-md focus:bg-white/10 focus:border-[#6366F1] focus:ring-4 focus:ring-[#6366F1]/10 text-white placeholder-white/40 transition-all shadow-sm outline-none"
               placeholder="Ask a legal question... e.g. 'What is the punishment for murder?'"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
@@ -129,7 +129,7 @@ export function LegalSearch() {
           <div className="space-y-8 pb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
             {/* ANSWER */}
-            <div className="p-6 md:p-8 bg-white dark:bg-[#1E293B] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
+            <div className="p-6 md:p-8 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 shadow-sm">
               <h2 className="text-sm font-bold tracking-wider text-gray-400 uppercase mb-4 flex items-center gap-2"><Scale className="w-4 h-4"/> Answer</h2>
               <div className="prose prose-blue dark:prose-invert max-w-none">
                 <p className="text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-wrap">{result.answer}</p>
@@ -138,7 +138,7 @@ export function LegalSearch() {
 
             {/* LEGAL BASIS */}
             {result.legal_basis && (
-              <div className="p-6 md:p-8 bg-blue-50/50 dark:bg-[#0F172A] border border-blue-100 dark:border-blue-900/30 border-l-[4px] border-l-[#6366F1] rounded-r-2xl shadow-sm">
+              <div className="p-6 md:p-8 bg-blue-500/5 backdrop-blur-md border border-blue-500/20 border-l-[4px] border-l-[#6366F1] rounded-r-2xl shadow-sm">
                  <h2 className="text-sm font-bold tracking-wider text-gray-400 uppercase mb-4 flex items-center gap-2"><FileText className="w-4 h-4"/> Legal Basis</h2>
                  <p className="font-serif text-gray-700 dark:text-gray-300 italic leading-relaxed whitespace-pre-wrap">
                    "{result.legal_basis}"
@@ -152,7 +152,7 @@ export function LegalSearch() {
                 <h2 className="text-sm font-bold tracking-wider text-gray-400 uppercase mb-4 pt-4 border-t border-gray-200 dark:border-gray-800">Primary Citations ({result.citations.length})</h2>
                 
                 {result.citations.map((cit, i) => (
-                  <div key={i} className="p-5 bg-white dark:bg-[#1E293B] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
+                  <div key={i} className="p-5 bg-white/5 backdrop-blur-md rounded-xl border border-white/10 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2 mb-1">
@@ -205,7 +205,7 @@ export function LegalSearch() {
       </div>
 
       {/* Footer Disclaimer */}
-      <div className="mt-auto border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#0F172A] py-4 text-center">
+      <div className="mt-auto border-t border-white/10 bg-white/5 backdrop-blur-md py-4 text-center">
         <p className="text-xs text-gray-400 dark:text-gray-500 flex items-center justify-center gap-1">
           <AlertCircle className="w-3 h-3" />
           This system provides legal information only, not legal advice. Consult a qualified advocate for specific legal matters.

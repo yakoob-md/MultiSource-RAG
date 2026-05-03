@@ -87,7 +87,7 @@ export function UploadPDF() {
       <div className="max-w-4xl mx-auto p-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl text-gray-900 dark:text-[#F8FAFC] mb-2">Upload PDF</h1>
+          <h1 className="text-3xl text-white mb-2">Upload PDF</h1>
           <p className="text-gray-600 dark:text-gray-400">
             Upload PDF documents to add them to your knowledge base
           </p>
@@ -101,7 +101,7 @@ export function UploadPDF() {
           onDrop={handleDrop}
           className={`relative border-2 border-dashed rounded-2xl p-12 transition-all ${dragActive
             ? 'border-[#6366F1] bg-[#6366F1]/5'
-            : 'border-gray-300 dark:border-gray-700 hover:border-[#6366F1] hover:bg-gray-50 dark:hover:bg-gray-800/50'
+            : 'border-white/10 hover:border-[#6366F1] hover:bg-white/5 backdrop-blur-md'
             }`}
         >
           <input
@@ -117,7 +117,7 @@ export function UploadPDF() {
             <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-[#6366F1]/10 flex items-center justify-center">
               <Upload className="w-8 h-8 text-[#6366F1]" />
             </div>
-            <h3 className="text-xl text-gray-900 dark:text-[#F8FAFC] mb-2">
+            <h3 className="text-xl text-white mb-2">
               Drop your PDF files here
             </h3>
             <p className="text-gray-600 dark:text-gray-400 mb-6">
@@ -138,14 +138,14 @@ export function UploadPDF() {
         {/* Uploaded Files */}
         {files.length > 0 && (
           <div className="mt-8 space-y-4">
-            <h2 className="text-xl text-gray-900 dark:text-[#F8FAFC] mb-4">
+            <h2 className="text-xl text-white mb-4">
               Uploaded Files ({files.length})
             </h2>
 
             {files.map((file) => (
               <div
                 key={file.name}
-                className="p-5 rounded-xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700"
+                className="p-5 rounded-xl bg-white/5 backdrop-blur-md border border-white/10"
               >
                 <div className="flex items-start gap-4">
                   <div className="p-3 rounded-xl bg-gray-100 dark:bg-gray-800">

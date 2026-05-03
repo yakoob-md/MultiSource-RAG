@@ -500,14 +500,7 @@ export function AskAI() {
   };
 
   return (
-    <div className="h-full flex text-white relative overflow-hidden bg-[#050505]">
-      {/* Background Beams - Global Consistent Design */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-[#6366F1]/5 blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-violet-600/5 blur-[120px]" />
-        <div className="absolute top-[20%] left-[30%] w-[40%] h-[40%] rounded-full bg-blue-600/5 blur-[120px] opacity-20" />
-      </div>
-
+    <div className="h-full flex text-white relative overflow-hidden">
       {/* Main Container */}
       <div className="flex-1 flex flex-col relative z-10">
 

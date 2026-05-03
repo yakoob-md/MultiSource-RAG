@@ -45,7 +45,7 @@ export const UploadImage: React.FC = () => {
         <p className="text-zinc-400">Upload images or charts to be processed by our Vision model (LLaVA).</p>
       </div>
 
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-8 backdrop-blur-sm">
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-md">
         {status === 'success' ? (
           <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
             <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center">
@@ -79,7 +79,7 @@ export const UploadImage: React.FC = () => {
               <label className="block text-sm font-medium text-zinc-300">Image File</label>
               <div 
                 className={`relative border-2 border-dashed rounded-xl p-12 transition-all flex flex-col items-center justify-center gap-4 ${
-                  file ? 'border-blue-500/50 bg-blue-500/5' : 'border-zinc-800 hover:border-zinc-700 bg-zinc-900/50'
+                  file ? 'border-blue-500/50 bg-blue-500/5' : 'border-white/10 hover:border-white/20 bg-white/5 backdrop-blur-md'
                 }`}
               >
                 <input
@@ -118,7 +118,7 @@ export const UploadImage: React.FC = () => {
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
                 placeholder="Describe what this image is for better indexing..."
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 min-h-[100px] resize-none transition-all"
+                className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 min-h-[100px] resize-none transition-all"
               />
             </div>
 
@@ -155,7 +155,7 @@ export const UploadImage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="p-6 bg-zinc-900/30 border border-zinc-800/50 rounded-2xl space-y-3">
+        <div className="p-6 bg-white/5 border border-white/10 rounded-2xl space-y-3 backdrop-blur-md">
           <h3 className="font-semibold text-white flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-blue-500" />
             VRAM Awareness
@@ -165,7 +165,7 @@ export const UploadImage: React.FC = () => {
             when the server is idle to avoid memory conflicts.
           </p>
         </div>
-        <div className="p-6 bg-zinc-900/30 border border-zinc-800/50 rounded-2xl space-y-3">
+        <div className="p-6 bg-white/5 border border-white/10 rounded-2xl space-y-3 backdrop-blur-md">
           <h3 className="font-semibold text-white flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-purple-500" />
             LLaVA Analysis

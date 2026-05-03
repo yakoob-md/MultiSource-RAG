@@ -73,7 +73,7 @@ export function AddYouTube() {
       <div className="max-w-4xl mx-auto p-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl text-gray-900 dark:text-[#F8FAFC] mb-2">Add YouTube Video</h1>
+          <h1 className="text-3xl text-white mb-2">Add YouTube Video</h1>
           <p className="text-gray-600 dark:text-gray-400">
             Add YouTube video transcripts to your knowledge base
           </p>
@@ -91,7 +91,7 @@ export function AddYouTube() {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleFetchPreview()}
-                className="w-full pl-12 pr-4 py-3 rounded-xl bg-white dark:bg-[#1E293B] border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-[#F8FAFC] placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
+                className="w-full pl-12 pr-4 py-3 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
               />
             </div>
             <button
@@ -109,7 +109,7 @@ export function AddYouTube() {
         {/* Video Preview */}
         {preview && (
           <div className="space-y-6">
-            <div className="p-6 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700">
+            <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10">
               <div className="flex gap-6 mb-4">
                 <div className="w-48 h-28 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 flex-shrink-0 relative">
                   <img
@@ -124,7 +124,7 @@ export function AddYouTube() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-xl text-gray-900 dark:text-[#F8FAFC] mb-2">
+                  <h2 className="text-xl text-white mb-2">
                     {preview.result?.title || preview.title}
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Video ID: {preview.videoId}</p>
@@ -170,7 +170,7 @@ export function AddYouTube() {
             </div>
 
             {(preview.status === 'processing' || preview.status === 'completed') && (
-              <div className="p-6 rounded-2xl bg-white dark:bg-[#1E293B] border border-gray-200 dark:border-gray-700">
+              <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10">
                 <h3 className="text-lg text-gray-900 dark:text-[#F8FAFC] mb-4">Processing Details</h3>
                 <div className="space-y-3">
                   <ProcessingStep label="Fetching transcript" completed={true} />
@@ -200,7 +200,7 @@ export function AddYouTube() {
         )}
 
         {!preview && !isLoading && (
-          <div className="p-6 rounded-2xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+          <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10">
             <h3 className="text-sm text-gray-900 dark:text-[#F8FAFC] mb-3">How it works</h3>
             <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
               <li className="flex items-start gap-2"><span className="text-[#6366F1] mt-1">•</span><span>Enter a YouTube video URL to extract its transcript</span></li>
