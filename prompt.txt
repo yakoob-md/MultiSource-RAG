@@ -1,43 +1,58 @@
-My image upload crashes with a database foreign key error. Fix the entire image pipeline.
-Problem 1: FK violation in image_loader.py
-image_jobs table has source_id VARCHAR(36) NOT NULL with FK to sources(id). But save_image_and_queue() passes image_id as source_id — which doesn't exist in sources. Fix: make source_id nullable (migration ran in Phase A). Update the INSERT to:
-pythoncursor.execute("""
-    INSERT INTO image_jobs (id, source_id, image_path, status)
-    VALUES (%s, NULL, %s, %s)
-""", (image_id, str(dest_path), 'pending'))
-Problem 2: /images/upload-image endpoint
-In backend/api/image_routes.py, the endpoint reads file.read() but FastAPI async file upload needs await file.read(). Verify the function is async def and uses await.
-Problem 3: BLIP integration (HF API)
-Create backend/vision/blip_captioner.py:
+i aksed the same question two times : expain about the partition plan 1947 
+first time with two sources a yt video about israel palestine conflict and a image of israel map 
+and this was the naswer : 
+### Introduction to the Partition Plan of 1947
+The Partition Plan of 1947 was a proposal by the United Nations (UN) to divide the British Mandate for Palestine into separate Jewish and Arab states, with Jerusalem to be administered by the UN. As stated in [Source 2], the plan was an attempt to resolve the Arab-Israeli conflict and provide a solution to the competing claims of the Jewish and Arab populations in the region.
 
-Function caption_image_blip(image_bytes: bytes) -> str
-Uses HF Inference API: https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large
-POST request with raw image bytes
-Auth header: Bearer {HF_API_KEY}
-Timeout: 30 seconds
-Returns caption string or "Image uploaded but could not be captioned" on failure
-Add a caption_image_blip_base64(b64_str: str) -> str wrapper
+### Background to the Partition Plan
+According to [Source 1], the British government had been responsible for administering Palestine under a League of Nations mandate since 1920. However, the British government found it increasingly difficult to manage the conflicting demands of the Jewish and Arab populations, and in 1947, they referred the question of Palestine's future to the UN. As mentioned in [Source 7], the UN Special Committee on Palestine (UNSCOP) was established to investigate the situation and make recommendations for the future of the region.
 
-Problem 4: Auto-caption on upload
-Update backend/api/image_routes.py upload endpoint to:
+### Key Provisions of the Partition Plan
+The Partition Plan of 1947 proposed the following:
+1. **Separate Jewish and Arab states**: The plan called for the creation of separate Jewish and Arab states, with the Jewish state to be established on approximately 55% of the territory and the Arab state on approximately 42%. As stated in [Source 4], the Jewish state was to include the Negev Desert, the Jezreel Valley, and the coastal plain, while the Arab state was to include the West Bank, the Gaza Strip, and parts of the Galilee.
+2. **Jerusalem to be administered by the UN**: The plan proposed that Jerusalem, which was considered a holy city by both Jews and Arabs, be administered by the UN as a separate entity, with the goal of maintaining its historic and cultural significance. As mentioned in [Source 10], the city was to be governed by a special international regime, with the UN responsible for its administration and security.
+3. **Economic union**: The plan proposed the establishment of an economic union between the Jewish and Arab states, with the goal of promoting economic cooperation and development in the region. As stated in [Source 11], the economic union was to include a customs union, a currency union, and a joint economic council to coordinate economic policies.
+4. **Protection of minority rights**: The plan called for the protection of minority rights in both states, including the right to freedom of speech, assembly, and worship. As mentioned in [Source 12], the plan also proposed the establishment of a commission to investigate and resolve complaints of human rights abuses.
 
-Save file and create pending job (existing logic, fixed)
-IMMEDIATELY call caption_image_blip(file_bytes) synchronously
-If caption succeeds, update job status to completed and store caption
-If fails, leave as pending (for manual LLaVA run later)
-Return {"image_id": ..., "status": "completed"/"pending", "caption": "..." or null}
+### Reactions to the Partition Plan
+The Partition Plan of 1947 was met with mixed reactions from the Jewish and Arab populations:
+1. **Jewish reaction**: The Jewish population, led by the Jewish Agency, accepted the plan, seeing it as a step towards the establishment of a Jewish state. As stated in [Source 13], the Jewish Agency believed that the plan provided a basis for the creation of a Jewish state, even if it was not perfect.
+2. **Arab reaction**: The Arab population, led by the Arab Higher Committee, rejected the plan, arguing that it did not provide for the creation of a single, unified Arab state and that the proposed borders were unfair. As mentioned in [Source 14], the Arab Higher Committee believed that the plan was a betrayal of Arab rights and interests in the region.
 
-Problem 5: Wire image context into queries
-Create backend/rag/image_rag.py:
+### Aftermath of the Partition Plan
+The Partition Plan of 1947 was never implemented, as it was rejected by the Arab states and the Arab population in Palestine. As stated in [Source 15], the plan's failure to provide a solution to the Arab-Israeli conflict led to the outbreak of the 1948 Arab-Israeli War, which resulted in the establishment of the State of Israel and the displacement of hundreds of thousands of Palestinians. The legacy of the Partition Plan continues to shape the modern Middle East, with the Israeli-Palestinian conflict remaining one of the most intractable and complex in the region.
 
-get_caption_for_image(image_id: str) -> str | None — fetches from DB
-enrich_query_with_image_context(question, image_id=None) -> tuple[str, str]
+but the seocnd time i include a wiki artcie of the exct un partiton plan 1947 nd asked the smae questin 
+ad this was th naswer : 
+### Introduction to the Partition Plan of 1947
+The Partition Plan of 1947 was a proposal by the United Nations (UN) to divide the British Mandate for Palestine into separate Jewish and Arab states, with Jerusalem to be administered by the UN. As stated in [Source 3], the plan was an attempt to resolve the Arab-Israeli conflict and provide a solution to the competing claims of the Jewish and Arab populations in the region.
 
-Returns (enriched_question, image_context_block)
-enriched_question = original question + "\n[Image shows: {first 150 chars of caption}]"
-image_context_block = full caption (max 300 chars) as a system note
+### Background to the Partition Plan
+According to [Source 1], the British government had been responsible for administering Palestine under a League of Nations mandate since 1920. However, the British government found it increasingly difficult to manage the conflicting demands of the Jewish and Arab populations, and in 1947, they referred the question of Palestine's future to the UN. As mentioned in [Source 2], the UN Special Committee on Palestine (UNSCOP) was established to investigate the situation and make recommendations for the future of the region.
 
+### Key Provisions of the Partition Plan
+The Partition Plan of 1947 proposed the following:
+1. **Separate Jewish and Arab states**: The plan called for the creation of separate Jewish and Arab states, with the Jewish state to be established on approximately 55% of the territory and the Arab state on approximately 42%. As stated in [Source 4], the Jewish state was to include the Negev Desert, the Jezreel Valley, and the coastal plain, while the Arab state was to include the West Bank, the Gaza Strip, and parts of the Galilee.
+2. **Jerusalem to be administered by the UN**: The plan proposed that Jerusalem, which was considered a holy city by both Jews and Arabs, be administered by the UN as a separate entity, with the goal of maintaining its historic and cultural significance. As mentioned in [Source 5], the city was to be governed by a special international regime, with the UN responsible for its administration and security.
+3. **Economic union**: The plan proposed the establishment of an economic union between the Jewish and Arab states, with the goal of promoting economic cooperation and development in the region. As stated in [Source 6], the economic union was to include a customs union, a currency union, and a joint economic council to coordinate economic policies.
+4. **Protection of minority rights**: The plan called for the protection of minority rights in both states, including the right to freedom of speech, assembly, and worship. As mentioned in [Source 7], the plan also proposed the establishment of a commission to investigate and resolve complaints of human rights abuses.
 
-Update backend/api/query.py QueryRequest to add image_id: str | None = None
-Before retrieve(), call enrich_query_with_image_context
-Prepend image_context_block to the system prompt in generator
+### Reactions to the Partition Plan
+The Partition Plan of 1947 was met with mixed reactions from the Jewish and Arab populations:
+1. **Jewish reaction**: The Jewish population, led by the Jewish Agency, accepted the plan, seeing it as a step towards the establishment of a Jewish state. As stated in [Source 8], the Jewish Agency believed that the plan provided a basis for the creation of a Jewish state, even if it was not perfect.
+2. **Arab reaction**: The Arab population, led by the Arab Higher Committee, rejected the plan, arguing that it did not provide for the creation of a single, unified Arab state and that the proposed borders were unfair. As mentioned in [Source 9], the Arab Higher Committee believed that the plan was a betrayal of Arab rights and interests in the region.
+
+### Aftermath of the Partition Plan
+The Partition Plan of 1947 was never implemented, as it was rejected by the Arab states and the Arab population in Palestine. As stated in [Source 10], the plan's failure to provide a solution to the Arab-Israeli conflict led to the outbreak of the 1948 Arab-Israeli War, which resulted in the establishment of the State of Israel and the displacement of hundreds of thousands of Palestinians. The legacy of the Partition Plan continues to shape the modern Middle East, with the Israeli-Palestinian conflict remaining one of the most intractable and complex in the region.
+
+### UN General Assembly Vote
+The Partition Plan was put to a vote in the UN General Assembly on November 29, 1947. As mentioned in [Source 11], the plan was approved by a vote of 33 to 13, with 10 abstentions. The vote was as follows:
+* In favor: 33 countries, including the United States, the Soviet Union, and many Western European countries.
+* Against: 13 countries, including all the Arab states, as well as India, Iran, and Turkey.
+* Abstentions: 10 countries, including the United Kingdom, which had previously controlled Palestine under a League of Nations mandate.
+
+The outcome of the vote was seen as a significant milestone in the history of the Israeli-Palestinian conflict, as it marked the first time that the international community had formally recognized the right of the Jewish people to a homeland in Palestine. However, the plan's failure to provide a solution to the conflict has had far-reaching consequences, and the Israeli-Palestinian conflict remains one of the most pressing issues in the Middle East today.
+
+why are the answers so indenticall despite one spurce extra iin the second time 
+and tel me is the rag actaully happening or is it just llm answering 
+bcs both the time thow come the nswrr is so identical the language and the wording also
