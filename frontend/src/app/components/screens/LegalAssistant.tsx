@@ -7,10 +7,9 @@ import {
   ChevronLeft, Paperclip, Image as ImageIcon,
   Database, Upload, Link as LinkIcon, Sparkles, Clock, Lock, History,
   Search, Zap, Gavel, Scale, Shield, ChevronUp, ChevronDown, Brain, FileDown,
-  CheckCircle2, Activity, ChevronRight
+  CheckCircle2, Activity, ChevronRight, LayoutDashboard, Settings
 } from 'lucide-react';
 import { cn } from '../ui/utils';
-import { AuroraBackground } from '../ui/AuroraBackground';
 import { 
   fetchSources, streamQueryRag, fetchConversationMessages, fetchConversations, 
   Conversation, uploadImage, uploadPdf, addWebsite, addYouTube, exportToPDF 
@@ -426,66 +425,29 @@ export function LegalAssistant() {
   const isInitial = messages.length === 0 && !isThinking && !isStreaming;
 
   return (
-    <AuroraBackground className="h-full w-full">
-      <div className="h-full flex bg-transparent relative overflow-hidden">
-        {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col min-w-0 relative h-full">
+    <div className="h-full flex bg-transparent relative overflow-hidden">
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col min-w-0 relative h-full">
+      {/* Aurora Background Wrapper */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className={cn(
+          `
+          [--white-gradient:repeating-linear-gradient(100deg,var(--white)_0%,var(--white)_7%,var(--transparent)_10%,var(--transparent)_12%,var(--white)_16%)]
+          [--dark-gradient:repeating-linear-gradient(100deg,var(--black)_0%,var(--black)_7%,var(--transparent)_10%,var(--transparent)_12%,var(--black)_16%)]
+          [--aurora:repeating-linear-gradient(100deg,var(--blue-500)_10%,var(--indigo-300)_15%,var(--blue-300)_20%,var(--violet-200)_25%,var(--blue-400)_30%)]
+          [background-image:var(--white-gradient),var(--aurora)]
+          [background-size:300%,_200%]
+          [background-position:50%_50%,50%_50%]
+          filter blur-[10px] invert dark:invert-0
+          after:content-[""] after:absolute after:inset-0 after:[background-image:var(--white-gradient),var(--aurora)] 
+          after:[background-size:200%,_100%] 
+          after:animate-aurora after:[background-attachment:fixed] after:mix-blend-difference
+          pointer-events-none
+          absolute -inset-[10px] opacity-40 will-change-transform
+          [mask-image:radial-gradient(ellipse_at_100%_0%,black_10%,var(--transparent)_70%)]`
+        )}></div>
+      </div>
 
-        {/* Header */}
-        <div className="px-8 py-6 border-b border-white/10 flex items-center justify-between backdrop-blur-xl relative z-10">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-[#6366F1]/10 flex items-center justify-center border border-[#6366F1]/20">
-              <Gavel className="w-6 h-6 text-[#6366F1]" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">Legal Assistant</h1>
-              <p className="text-[10px] text-white/20 font-bold uppercase tracking-[0.2em] mt-0.5">Statutory Intelligence Workbench</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-3">
-             <button
-              onClick={() => setShowIntelligence(!showIntelligence)}
-              className={cn(
-                "p-3 rounded-xl border transition-all flex items-center gap-2",
-                showIntelligence 
-                  ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-500" 
-                  : "bg-white/5 border-white/10 text-white/40 hover:text-white hover:bg-white/10"
-              )}
-              title="Toggle Research Intelligence"
-            >
-              <Activity className="w-5 h-5" />
-              <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Intelligence</span>
-            </button>
-             <button
-              onClick={handleExport}
-              disabled={messages.length === 0}
-              className={cn(
-                "p-3 rounded-xl border transition-all flex items-center gap-2",
-                messages.length > 0 
-                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20" 
-                  : "bg-white/5 border-white/10 text-white/20 cursor-not-allowed"
-              )}
-              title="Export Memorandum"
-            >
-              <FileDown className="w-5 h-5" />
-              <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Export</span>
-            </button>
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="p-3 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all group"
-            >
-              <History className="w-5 h-5 group-hover:rotate-[-12deg] transition-transform" />
-            </button>
-            <button
-              onClick={() => setIsKbOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-[#6366F1]/10 text-[#6366F1] border border-[#6366F1]/20 flex items-center gap-2 hover:bg-[#6366F1]/20 transition-all"
-            >
-              <Database className="w-4 h-4" />
-              <span className="text-[11px] font-bold uppercase tracking-widest">Knowledge Base</span>
-            </button>
-          </div>
-        </div>
 
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto py-10 no-scrollbar relative z-10">
@@ -496,31 +458,87 @@ export function LegalAssistant() {
                 <Scale className="w-10 h-10 text-[#6366F1]" />
               </div>
               <div className="space-y-4">
-                <h2 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white to-white/40">
-                  How can InteleX assist your legal research today?
+                <h2 className="text-4xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white to-white/40 max-w-xl">
+                  Build precise legal strategies with InteleX
                 </h2>
-                <p className="text-sm text-white/30 leading-relaxed max-w-lg mx-auto">
-                  Analyze statutes, cross-reference precedents, and generate memoranda with verified citations and grounding.
+                <p className="text-sm text-white/30 leading-relaxed max-w-md mx-auto">
+                  Research statutes, precedents, and case laws with real-time vector grounding.
                 </p>
               </div>
+
+              {/* Centered Pill Search Bar for Initial State */}
+              <div className="w-full max-w-xl mx-auto px-4">
+                <div className="bg-white/5 border border-black/5 rounded-full p-2 flex items-center transition-all focus-within:border-[#6366F1]/50 focus-within:bg-white/10 shadow-sm">
+                  <button 
+                    onClick={() => setIsKbOpen(true)}
+                    className="p-2.5 rounded-full hover:bg-black/5 text-black/20 hover:text-[#6366F1] transition-all"
+                    title="Knowledge Base"
+                  >
+                    <Database className="w-4 h-4" />
+                  </button>
+                  <button className="p-2.5 rounded-full hover:bg-black/5 text-purple-400/60 hover:text-purple-400 transition-all">
+                    <Sparkles className="w-4 h-4" />
+                  </button>
+                  <input
+                    type="text"
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="How can InteleX assist you today?"
+                    className="bg-transparent flex-1 outline-none text-sm text-black/70 px-4 placeholder:text-black/10"
+                  />
+                  <button 
+                    onClick={() => handleSubmit()}
+                    className="p-2.5 bg-[#6366F1] text-white rounded-full shadow-lg shadow-[#6366F1]/20 hover:scale-105 active:scale-95 transition-all ml-2"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </div>
+                
+                {/* Visible Selected Sources */}
+                {selectedSourceIds.size > 0 && (
+                  <div className="mt-4 flex flex-wrap justify-center gap-2">
+                    {Array.from(selectedSourceIds).map(sid => {
+                      const s = sources.find(src => src.id === sid);
+                      if (!s) return null;
+                      return (
+                        <div key={sid} className="flex items-center gap-2 px-3 py-1 rounded-full bg-black/5 border border-black/5 text-[10px] font-bold text-black/40 uppercase tracking-widest group hover:bg-black/10 transition-all">
+                          <FileText className="w-3 h-3" />
+                          <span>{s.title}</span>
+                          <button 
+                            onClick={() => {
+                              const next = new Set(selectedSourceIds);
+                              next.delete(sid);
+                              setSelectedSourceIds(next);
+                            }}
+                            className="p-0.5 hover:bg-black/10 rounded-full"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               
-              <div className="grid grid-cols-2 gap-4 w-full pt-4">
+              <div className="flex flex-wrap justify-center gap-2 mt-8 max-w-xl mx-auto">
                 {[
-                  { title: "Statutory Analysis", desc: "Interpret Section 438 CrPC conditions", icon: Shield },
-                  { title: "Case Precedents", desc: "Recent SC rulings on anticipatory bail", icon: Gavel }
+                  "Interpret Section 438 CrPC conditions",
+                  "Recent SC rulings on anticipatory bail",
+                  "Analyze IT Act 2000 crypto clauses",
+                  "Civil liability in medical negligence"
                 ].map((item, idx) => (
                   <button 
                     key={idx}
-                    onClick={() => setQuestion(item.desc)}
-                    className="p-6 rounded-3xl bg-white/[0.02] border border-white/5 hover:border-[#6366F1]/30 hover:bg-[#6366F1]/5 transition-all group text-left space-y-3"
+                    onClick={() => {
+                      setQuestion(item);
+                      // Auto-submit for suggestions
+                      setTimeout(() => handleSubmit(item), 100);
+                    }}
+                    className="bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 rounded-full px-4 py-2 text-[11px] font-bold text-white/40 hover:text-white transition-all uppercase tracking-widest"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/20 group-hover:text-[#6366F1] group-hover:bg-[#6366F1]/10 transition-all">
-                      <item.icon className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-white/80">{item.title}</p>
-                      <p className="text-[10px] text-white/20 mt-1 leading-relaxed">{item.desc}</p>
-                    </div>
+                    {item}
                   </button>
                 ))}
               </div>
@@ -594,10 +612,11 @@ export function LegalAssistant() {
           </div>
         </div>
 
-        {/* Input Section */}
-        <div className="px-6 pb-8 pt-4 relative z-20">
-          <div className="max-w-3xl mx-auto">
-            <div className="relative group">
+        {/* Input Section (Hidden in initial mode) */}
+        {!isInitial && (
+          <div className="px-6 pb-8 pt-4 relative z-20">
+            <div className="max-w-3xl mx-auto">
+              <div className="relative group">
               {/* Mentions UI */}
               <AnimatePresence>
                 {showMentions && (
@@ -732,201 +751,12 @@ export function LegalAssistant() {
                   </div>
                 </div>
               </div>
+            </div>
+            </div>
           </div>
-        </div>
-      </div>
-      </div>
-
-      {/* Research Intelligence Sidebar (Visual Proof) */}
-      <AnimatePresence>
-        {showIntelligence && (
-          <motion.div
-            initial={{ x: 400, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 400, opacity: 0 }}
-            className="w-[380px] border-l border-white/10 bg-black/20 backdrop-blur-3xl flex flex-col relative z-30 hidden lg:flex"
-          >
-            {/* Sidebar Header */}
-            <div className="p-6 border-b border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-                  <Activity className="w-4 h-4 text-emerald-500" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">Research Intelligence</h3>
-                  <p className="text-[9px] text-white/30 font-bold uppercase tracking-widest">Real-time Pipeline Audit</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setShowIntelligence(false)}
-                className="p-1.5 hover:bg-white/5 rounded-lg text-white/20 transition-all"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-8 no-scrollbar">
-              {/* 1. Pipeline Status */}
-              <section>
-                <div className="flex items-center gap-2 mb-4">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Intelligence Flow</span>
-                </div>
-                <div className="space-y-3">
-                  {['Query Decomposition', 'Vector Semantic Search', 'Cross-Encoder Reranking', 'Synthesis Guardrails'].map((step, idx) => {
-                    const stepNum = idx + 1;
-                    const isActive = (isThinking || isStreaming) && currentStep === stepNum;
-                    const isDone = (isThinking || isStreaming) && currentStep > stepNum;
-                    return (
-                      <div key={step} className="flex items-center gap-3">
-                        <div className={cn(
-                          "w-1.5 h-1.5 rounded-full transition-all duration-500",
-                          isActive ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] scale-150" : "bg-white/10",
-                          isDone ? "bg-emerald-500/40" : ""
-                        )} />
-                        <span className={cn(
-                          "text-[11px] font-medium transition-colors",
-                          isActive ? "text-white" : "text-white/20",
-                          isDone ? "text-emerald-500/60" : ""
-                        )}>{step}</span>
-                        {isDone && <CheckCircle2 className="w-3 h-3 text-emerald-500/40 ml-auto" />}
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-
-              {/* 2. Vector Embedding Matrix (Creative Visualization) */}
-              <section>
-                <div className="flex items-center gap-2 mb-4">
-                  <Database className="w-3.5 h-3.5 text-blue-500" />
-                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Vector Embedding Matrix</span>
-                </div>
-                <div className="h-32 rounded-2xl bg-white/[0.02] border border-white/5 overflow-hidden relative group p-1">
-                  {/* Real-time reactive grid */}
-                  <div className="absolute inset-0 grid grid-cols-12 gap-[2px] p-2">
-                    {Array.from({ length: 96 }).map((_, i) => {
-                      const isActive = (isThinking || isStreaming || embeddingActivity);
-                      return (
-                        <motion.div 
-                          key={i}
-                          animate={{ 
-                            opacity: isActive ? [0.1, 0.8, 0.1] : 0.15,
-                            scale: isActive ? [1, 1.2, 1] : 1,
-                            backgroundColor: isActive ? ['#3b82f6', '#6366f1', '#a855f7'] : '#ffffff'
-                          }}
-                          transition={{ 
-                            duration: isActive ? 0.8 + (Math.random() * 1) : 3, 
-                            repeat: Infinity, 
-                            delay: i * 0.01 
-                          }}
-                          className="w-full h-full rounded-[1px] bg-white/20"
-                        />
-                      );
-                    })}
-                  </div>
-                  
-                  {/* Overlay Labels */}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                    <div className="flex items-center gap-2 bg-black/60 px-4 py-1.5 rounded-full backdrop-blur-xl border border-white/10 shadow-2xl">
-                      <div className={cn(
-                        "w-1.5 h-1.5 rounded-full",
-                        (isThinking || isStreaming) ? "bg-blue-500 animate-pulse" : "bg-emerald-500"
-                      )} />
-                      <p className="text-[10px] font-mono text-white font-bold uppercase tracking-[0.2em]">
-                        {isThinking ? 'TOKENIZING...' : isStreaming ? 'MAPPING VECTORS...' : 'DIM: 1024 | STEADY'}
-                      </p>
-                    </div>
-                    {(isThinking || isStreaming) && (
-                      <motion.p 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="text-[8px] font-bold text-[#6366F1] uppercase tracking-[0.4em] animate-pulse"
-                      >
-                        Calculating Semantic Proximity
-                      </motion.p>
-                    )}
-                  </div>
-
-                  {/* Scanning Effect */}
-                  {(isThinking || isStreaming) && (
-                    <motion.div 
-                      animate={{ top: ['-100%', '200%'] }}
-                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                      className="absolute left-0 right-0 h-10 bg-gradient-to-b from-transparent via-[#6366F1]/20 to-transparent pointer-events-none"
-                    />
-                  )}
-                </div>
-                <div className="mt-3 flex items-center justify-between px-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Latent Space:</span>
-                    <span className="text-[8px] font-mono text-blue-400 font-bold tracking-tighter">e5-multilingual-v3</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Compute:</span>
-                    <span className="text-[8px] font-mono text-amber-500 font-bold tracking-tighter">FP16 CUDA</span>
-                  </div>
-                </div>
-              </section>
-
-              {/* 3. Retrieved Chunks List */}
-              <section className="space-y-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <LinkIcon className="w-3.5 h-3.5 text-purple-500" />
-                    <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Retrieved Evidence</span>
-                  </div>
-                  <span className="text-[9px] font-bold text-[#6366F1] bg-[#6366F1]/10 px-2 py-0.5 rounded-full">{activeChunks.length} Chunks</span>
-                </div>
-                
-                <div className="space-y-4">
-                  {activeChunks.length === 0 ? (
-                    <div className="py-10 text-center border border-dashed border-white/5 rounded-2xl">
-                      <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest">Awaiting Analysis</p>
-                    </div>
-                  ) : (
-                    activeChunks.map((chunk, idx) => (
-                      <motion.div 
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.1 }}
-                        key={idx} 
-                        className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-[#6366F1]/30 transition-all group"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-[9px] font-bold text-[#6366F1] uppercase truncate max-w-[150px]">{chunk.sourceName}</span>
-                          <span className="text-[8px] font-mono text-white/30">SCORE: {Math.round((chunk.similarityScore || 0) * 100)}%</span>
-                        </div>
-                        <p className="text-[11px] text-white/60 leading-relaxed line-clamp-4 italic mb-3">
-                          "{chunk.text}"
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
-                            <motion.div 
-                              initial={{ width: 0 }}
-                              animate={{ width: `${Math.round((chunk.similarityScore || 0) * 100)}%` }}
-                              className="h-full bg-emerald-500/50"
-                            />
-                          </div>
-                          <span className="text-[8px] font-bold text-emerald-500 uppercase">Relevant</span>
-                        </div>
-                      </motion.div>
-                    ))
-                  )}
-                </div>
-              </section>
-            </div>
-
-            {/* Sidebar Footer */}
-            <div className="p-6 border-t border-white/10 bg-black/20">
-               <div className="flex items-center gap-3 p-3 rounded-xl bg-[#6366F1]/5 border border-[#6366F1]/10">
-                  <Shield className="w-4 h-4 text-[#6366F1]" />
-                  <p className="text-[10px] text-white/40 font-medium leading-tight">All evidence is verified against the local knowledge base to prevent hallucinations.</p>
-               </div>
-            </div>
-          </motion.div>
         )}
-      </AnimatePresence>
+      </div>
+
 
       {/* Source Selection Modal (KB) */}
       <AnimatePresence>
@@ -1243,104 +1073,6 @@ export function LegalAssistant() {
           }
         }}
       />
-      {/* History Sidebar Overlay */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSidebarOpen(false)}
-              className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md"
-            />
-            <motion.div
-              initial={{ x: -320 }}
-              animate={{ x: 0 }}
-              exit={{ x: -320 }}
-              className="fixed top-0 left-0 bottom-0 w-80 z-[101] bg-[#0A0A0B]/95 backdrop-blur-2xl border-r border-white/10 p-8 flex flex-col shadow-2xl overflow-hidden"
-            >
-              {/* Beams Background for Sidebar */}
-              <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40">
-                <div className="absolute -top-[10%] -right-[20%] w-[80%] h-[40%] rounded-full bg-[#6366F1]/10 blur-[80px]" />
-                <div className="absolute bottom-[20%] -left-[20%] w-[60%] h-[50%] rounded-full bg-violet-500/5 blur-[90px]" />
-              </div>
-
-              <div className="flex items-center justify-between mb-10 relative z-10">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center">
-                    <History className="w-5 h-5 text-[#6366F1]" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold tracking-tight">Intelligence</h2>
-                    <p className="text-[9px] text-white/20 font-bold uppercase tracking-[0.2em]">Conversation History</p>
-                  </div>
-                </div>
-                <button onClick={() => setSidebarOpen(false)} className="p-2 hover:bg-white/5 rounded-xl text-white/20 hover:text-white transition-all">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <button
-                onClick={() => { handleNewChat(); setSidebarOpen(false); }}
-                className="w-full py-3 px-4 mb-8 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-2xl flex items-center justify-center gap-3 transition-all shadow-lg shadow-[#6366F1]/20 group relative z-10"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="text-[11px] font-bold uppercase tracking-widest">New Legal Session</span>
-              </button>
-
-              <div className="flex-1 overflow-y-auto space-y-3 no-scrollbar pr-2 relative z-10">
-                {conversations.length === 0 ? (
-                  <div className="py-10 text-center space-y-2">
-                    <p className="text-white/20 text-xs font-bold uppercase tracking-widest">No cases yet</p>
-                  </div>
-                ) : (
-                  conversations.map(conv => (
-                    <button
-                      key={conv.id}
-                      onClick={() => {
-                        if (conv.conv_type === 'general' || !conv.conv_type) {
-                          navigate(`/app/ask?id=${conv.id}`);
-                        } else {
-                          loadConversation(conv.id);
-                        }
-                        setSidebarOpen(false);
-                      }}
-                      className={cn(
-                        "w-full flex items-center gap-4 p-4 rounded-2xl transition-all border text-left group relative",
-                        activeConvId === conv.id
-                          ? "bg-[#6366F1]/10 border-[#6366F1]/30 text-white"
-                          : "bg-white/[0.02] border-white/5 text-white/40 hover:bg-white/[0.04] hover:border-white/10"
-                      )}
-                    >
-                      <div className={cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center border transition-colors",
-                        activeConvId === conv.id 
-                          ? "bg-[#6366F1]/20 border-[#6366F1]/40 text-[#6366F1]" 
-                          : "bg-white/5 border-white/10 text-white/20 group-hover:text-white/60"
-                      )}>
-                        {conv.conv_type === 'legal' ? (
-                          <Gavel className="w-4 h-4" />
-                        ) : (
-                          <MessageSquare className="w-4 h-4" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold truncate group-hover:text-white transition-colors">{conv.title}</p>
-                        <p className="text-[9px] font-medium text-white/20 uppercase tracking-tighter mt-0.5">
-                          {conv.conv_type === 'legal' ? 'Legal Case' : 'General Intelligence'}
-                          {conv.updated_at && ` · ${new Date(conv.updated_at).toLocaleDateString()}`}
-                        </p>
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-      </div>
-    </AuroraBackground>
+    </div>
   );
 }
