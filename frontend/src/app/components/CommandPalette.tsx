@@ -233,9 +233,9 @@ export function CommandPalette({ onSelectHistory }: { onSelectHistory?: (id: str
         section: "all" as CommandSection,
         icon: <Clock className="h-3 w-3" />,
         action: () => {
-            window.dispatchEvent(new CustomEvent('load-conversation', { detail: { id: conv.id } }));
             setOpen(false);
-            navigateTo("/app");
+            const route = conv.conv_type === 'legal' ? '/app/legal' : '/app';
+            navigateTo(`${route}?id=${conv.id}`);
         }
     }))
   ];

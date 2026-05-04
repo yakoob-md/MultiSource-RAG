@@ -55,7 +55,11 @@ export function Dashboard() {
   };
 
   const recentActivity = [...sources]
-    .sort((a, b) => b.dateAdded.getTime() - a.dateAdded.getTime())
+    .sort((a, b) => {
+      const t1 = a.dateAdded?.getTime() || 0;
+      const t2 = b.dateAdded?.getTime() || 0;
+      return t2 - t1;
+    })
     .slice(0, 5);
 
   const languageDistribution = [

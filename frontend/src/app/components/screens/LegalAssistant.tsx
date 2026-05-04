@@ -7,7 +7,7 @@ import {
   ChevronLeft, Paperclip, Image as ImageIcon,
   Database, Upload, Link as LinkIcon, Sparkles, Clock, Lock, History,
   Search, Zap, Gavel, Scale, Shield, ChevronUp, ChevronDown, Brain, FileDown,
-  CheckCircle2, Activity, ChevronRight, LayoutDashboard, Settings
+  CheckCircle2, Activity, ChevronRight, Check
 } from 'lucide-react';
 import { cn } from '../ui/utils';
 import { 
@@ -164,6 +164,9 @@ export function LegalAssistant() {
   const [youtubeInput, setYoutubeInput] = useState('');
   const [isProcessingExternal, setIsProcessingExternal] = useState(false);
   const sourceFileInputRef = useRef<HTMLInputElement>(null);
+  const [activeImageId, setActiveImageId] = useState<string | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   // ── Research Intelligence state ──
   const [activeChunks, setActiveChunks] = useState<RetrievedChunk[]>([]);
@@ -178,7 +181,11 @@ export function LegalAssistant() {
       );
       const recentSources = sources
         .filter(s => selectedSourceIds.has(s.id) && !s.metadata?.docType)
-        .sort((a, b) => b.dateAdded.getTime() - a.dateAdded.getTime())
+        .sort((a, b) => {
+          const t1 = a.dateAdded?.getTime() || 0;
+          const t2 = b.dateAdded?.getTime() || 0;
+          return t2 - t1;
+        })
         .slice(0, 5);
       return [...legalSources, ...recentSources];
     }
@@ -194,9 +201,18 @@ export function LegalAssistant() {
     });
   }, []);
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingAnswer, isThinking]);
+    if (scrollRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
+      if (isAtBottom || !isStreaming) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  }, [messages, streamingAnswer, isStreaming]);
+
 
   const loadConversation = async (convId: string) => {
     setActiveConvId(convId);
@@ -243,6 +259,25 @@ export function LegalAssistant() {
     } catch (err) {
       setError("Failed to load conversation history");
     }
+  };
+
+  // ── URL & Event Navigation ──
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    if (id) loadConversation(id);
+
+    const handleLoadConv = (e: any) => {
+      if (e.detail?.id) loadConversation(e.detail.id);
+    };
+    window.addEventListener('load-conversation', handleLoadConv);
+    return () => window.removeEventListener('load-conversation', handleLoadConv);
+  }, []);
+
+  const removeImage = () => {
+    setActiveImageId(null);
+    setImagePreviewUrl(null);
+    if (sourceFileInputRef.current) sourceFileInputRef.current.value = '';
   };
 
   const handleNewChat = () => {
@@ -331,8 +366,8 @@ export function LegalAssistant() {
           setTimeout(() => setEmbeddingActivity(false), 2000);
         },
         (err) => { throw err; },
-        undefined,
-        false,
+        activeImageId || undefined,
+        true, // includeImages
         llmProvider,
         true, // isLegalMode = true
         legalFilter,
@@ -365,6 +400,7 @@ export function LegalAssistant() {
       setMessages(prev => [...prev, aiMsg]);
       setIsStreaming(false);
       setStreamingAnswer('');
+      removeImage();
       setTaggedSourceIds(new Set()); // Reset tags after submission
 
     } catch (err: any) {
@@ -427,31 +463,17 @@ export function LegalAssistant() {
   return (
     <div className="h-full flex bg-transparent relative overflow-hidden">
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0 relative h-full">
-      {/* Aurora Background Wrapper */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className={cn(
-          `
-          [--white-gradient:repeating-linear-gradient(100deg,var(--white)_0%,var(--white)_7%,var(--transparent)_10%,var(--transparent)_12%,var(--white)_16%)]
-          [--dark-gradient:repeating-linear-gradient(100deg,var(--black)_0%,var(--black)_7%,var(--transparent)_10%,var(--transparent)_12%,var(--black)_16%)]
-          [--aurora:repeating-linear-gradient(100deg,var(--blue-500)_10%,var(--indigo-300)_15%,var(--blue-300)_20%,var(--violet-200)_25%,var(--blue-400)_30%)]
-          [background-image:var(--white-gradient),var(--aurora)]
-          [background-size:300%,_200%]
-          [background-position:50%_50%,50%_50%]
-          filter blur-[10px] invert dark:invert-0
-          after:content-[""] after:absolute after:inset-0 after:[background-image:var(--white-gradient),var(--aurora)] 
-          after:[background-size:200%,_100%] 
-          after:animate-aurora after:[background-attachment:fixed] after:mix-blend-difference
-          pointer-events-none
-          absolute -inset-[10px] opacity-40 will-change-transform
-          [mask-image:radial-gradient(ellipse_at_100%_0%,black_10%,var(--transparent)_70%)]`
-        )}></div>
-      </div>
+      <div className="flex-1 flex flex-col min-w-0 relative h-full min-h-0">
+        {/* Background Decor */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-[#6366F1]/5 blur-[120px] rounded-full" />
+          <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-purple-500/5 blur-[100px] rounded-full" />
+        </div>
 
 
         {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto py-10 no-scrollbar relative z-10">
-          <div className="max-w-3xl mx-auto px-8 space-y-8">
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto py-10 relative z-10">
+          <div className="max-w-2xl mx-auto px-8 space-y-8">
           {isInitial ? (
             <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto text-center space-y-8">
               <div className="w-20 h-20 rounded-[2.5rem] bg-[#6366F1]/10 flex items-center justify-center border border-[#6366F1]/20 animate-pulse">
@@ -467,53 +489,53 @@ export function LegalAssistant() {
               </div>
 
               {/* Centered Pill Search Bar for Initial State */}
-              <div className="w-full max-w-xl mx-auto px-4">
-                <div className="bg-white/5 border border-black/5 rounded-full p-2 flex items-center transition-all focus-within:border-[#6366F1]/50 focus-within:bg-white/10 shadow-sm">
+              <div className="w-full max-w-xl mx-auto space-y-4">
+                <div className="bg-white/[0.03] border border-white/10 rounded-[2rem] p-2 flex items-center transition-all focus-within:border-[#6366F1]/50 focus-within:bg-white/[0.06] shadow-2xl">
                   <button 
                     onClick={() => setIsKbOpen(true)}
-                    className="p-2.5 rounded-full hover:bg-black/5 text-black/20 hover:text-[#6366F1] transition-all"
-                    title="Knowledge Base"
+                    className="p-3 rounded-full hover:bg-white/5 text-white/20 hover:text-[#6366F1] transition-all group relative"
+                    title="Source Management"
                   >
-                    <Database className="w-4 h-4" />
+                    <Database className="w-5 h-5" />
+                    {selectedSourceIds.size > 0 && (
+                      <span className="absolute top-2 right-2 w-2 h-2 bg-[#6366F1] rounded-full border border-black animate-pulse" />
+                    )}
                   </button>
-                  <button className="p-2.5 rounded-full hover:bg-black/5 text-purple-400/60 hover:text-purple-400 transition-all">
-                    <Sparkles className="w-4 h-4" />
-                  </button>
+                  <div className="w-[1px] h-6 bg-white/5 mx-1" />
                   <input
                     type="text"
                     value={question}
                     onChange={(e) => setQuestion(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="How can InteleX assist you today?"
-                    className="bg-transparent flex-1 outline-none text-sm text-black/70 px-4 placeholder:text-black/10"
+                    placeholder="Search statutes, case laws, or legal documents..."
+                    className="bg-transparent flex-1 outline-none text-sm text-white/80 px-4 placeholder:text-white/10"
                   />
                   <button 
                     onClick={() => handleSubmit()}
-                    className="p-2.5 bg-[#6366F1] text-white rounded-full shadow-lg shadow-[#6366F1]/20 hover:scale-105 active:scale-95 transition-all ml-2"
+                    className="p-3 bg-[#6366F1] text-white rounded-full shadow-lg shadow-[#6366F1]/20 hover:scale-105 active:scale-95 transition-all ml-2"
                   >
-                    <Send className="w-4 h-4" />
+                    <Send className="w-5 h-5" />
                   </button>
                 </div>
-                
-                {/* Visible Selected Sources */}
+
+                {/* Selected Sources Preview */}
                 {selectedSourceIds.size > 0 && (
-                  <div className="mt-4 flex flex-wrap justify-center gap-2">
-                    {Array.from(selectedSourceIds).map(sid => {
-                      const s = sources.find(src => src.id === sid);
+                  <div className="flex flex-wrap justify-center gap-2 px-4">
+                    {Array.from(selectedSourceIds).map(id => {
+                      const s = sources.find(src => src.id === id);
                       if (!s) return null;
                       return (
-                        <div key={sid} className="flex items-center gap-2 px-3 py-1 rounded-full bg-black/5 border border-black/5 text-[10px] font-bold text-black/40 uppercase tracking-widest group hover:bg-black/10 transition-all">
-                          <FileText className="w-3 h-3" />
-                          <span>{s.title}</span>
+                        <div key={id} className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full bg-white/[0.03] border border-white/5 text-[10px] font-bold text-white/40 uppercase tracking-widest group hover:border-[#6366F1]/30 transition-all">
+                          <span className="truncate max-w-[150px]">{s.title}</span>
                           <button 
                             onClick={() => {
                               const next = new Set(selectedSourceIds);
-                              next.delete(sid);
+                              next.delete(id);
                               setSelectedSourceIds(next);
                             }}
-                            className="p-0.5 hover:bg-black/10 rounded-full"
+                            className="p-1 rounded-full hover:bg-red-500/10 text-white/10 hover:text-red-500 transition-all"
                           >
-                            <X className="w-2.5 h-2.5" />
+                            <X className="w-3 h-3" />
                           </button>
                         </div>
                       );
@@ -601,7 +623,7 @@ export function LegalAssistant() {
               )}
               {isStreaming && streamingAnswer && (
                 <div className="flex justify-start">
-                  <div className="max-w-[85%] p-6 bg-white/[0.03] border border-white/10 rounded-[2rem] rounded-tl-none backdrop-blur-xl">
+                  <div className="w-full max-w-[85%] p-6 bg-white/[0.03] border border-white/10 rounded-[2rem] rounded-tl-none backdrop-blur-xl">
                     <p className="text-sm leading-relaxed whitespace-pre-wrap">{streamingAnswer}</p>
                   </div>
                 </div>
@@ -615,50 +637,99 @@ export function LegalAssistant() {
         {/* Input Section (Hidden in initial mode) */}
         {!isInitial && (
           <div className="px-6 pb-8 pt-4 relative z-20">
-            <div className="max-w-3xl mx-auto">
+            <div className="max-w-2xl mx-auto space-y-4">
+              {/* Active Sources Toolbar */}
+              {selectedSourceIds.size > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                   {Array.from(selectedSourceIds).map(id => {
+                      const s = sources.find(src => src.id === id);
+                      if (!s) return null;
+                      return (
+                        <div key={id} className="flex items-center gap-2 pl-3 pr-2 py-1 rounded-full bg-white/[0.03] border border-white/5 text-[9px] font-bold text-white/30 uppercase tracking-widest group hover:border-[#6366F1]/30 transition-all">
+                          <span className="truncate max-w-[120px]">{s.title}</span>
+                          <button 
+                            onClick={() => {
+                              const next = new Set(selectedSourceIds);
+                              next.delete(id);
+                              setSelectedSourceIds(next);
+                            }}
+                            className="p-1 rounded-full hover:bg-red-500/10 text-white/10 hover:text-red-500 transition-all"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
               <div className="relative group">
-              {/* Mentions UI */}
-              <AnimatePresence>
-                {showMentions && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
-                    className="absolute bottom-full left-0 w-full mb-4 bg-[#111114] border border-white/10 rounded-2xl p-2 shadow-2xl backdrop-blur-2xl z-50 overflow-hidden"
-                  >
-                    <div className="p-3 border-b border-white/5 flex items-center justify-between">
-                       <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Available Sources</span>
-                       <span className="text-[10px] text-[#6366F1] font-mono">@{mentionQuery}</span>
-                    </div>
-                    <div className="max-h-[280px] overflow-y-auto no-scrollbar">
-                      {filteredMentions.map((s, idx) => (
-                        <button
-                          key={s.id}
-                          onClick={() => handleMentionSelect(s)}
-                          className={cn(
-                            "w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left",
-                            idx === mentionIndex ? "bg-[#6366F1]/10 text-white" : "text-white/40 hover:bg-white/5"
-                          )}
-                        >
-                          <div className={cn(
-                            "w-8 h-8 rounded-lg flex items-center justify-center border transition-colors",
-                            idx === mentionIndex ? "bg-[#6366F1]/20 border-[#6366F1]/40 text-[#6366F1]" : "bg-white/5 border-white/10"
-                          )}>
-                            <FileText className="w-4 h-4" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                             <p className="text-xs font-bold truncate">{s.title}</p>
-                             <p className="text-[9px] uppercase tracking-widest opacity-50">{s.type}</p>
-                          </div>
+                {/* Image Preview Block */}
+                <AnimatePresence>
+                  {imagePreviewUrl && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                      className="absolute bottom-full mb-4 left-0 p-2 bg-white/[0.03] border border-white/5 rounded-2xl backdrop-blur-2xl shadow-2xl"
+                    >
+                      <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-white/10">
+                        <img src={imagePreviewUrl} alt="Preview" className="w-full h-full object-cover" />
+                        <button onClick={removeImage} className="absolute top-1 right-1 p-1 bg-black/60 text-white rounded-full hover:bg-red-500 transition-colors">
+                          <X className="w-3 h-3" />
                         </button>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-              <div className="backdrop-blur-2xl bg-white/[0.02] border border-white/10 rounded-[2.5rem] shadow-2xl shadow-black/50 transition-all group-focus-within:border-[#6366F1]/50 group-focus-within:bg-white/[0.04]">
-                <div className="p-2 pt-4">
+                {/* Mentions UI */}
+                <AnimatePresence>
+                  {showMentions && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      className="absolute bottom-full left-0 w-full mb-4 bg-[#111114] border border-white/10 rounded-2xl p-2 shadow-2xl backdrop-blur-2xl z-50 overflow-hidden"
+                    >
+                      <div className="p-3 border-b border-white/5 flex items-center justify-between">
+                         <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Available Sources</span>
+                         <span className="text-[10px] text-[#6366F1] font-mono">@{mentionQuery}</span>
+                      </div>
+                      <div className="max-h-[280px] overflow-y-auto no-scrollbar">
+                        {filteredMentions.map((s, idx) => (
+                          <button
+                            key={s.id}
+                            onClick={() => handleMentionSelect(s)}
+                            className={cn(
+                              "w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left",
+                              idx === mentionIndex ? "bg-[#6366F1]/10 text-white" : "text-white/40 hover:bg-white/5"
+                            )}
+                          >
+                            <div className={cn(
+                              "w-8 h-8 rounded-lg flex items-center justify-center border transition-colors",
+                              idx === mentionIndex ? "bg-[#6366F1]/20 border-[#6366F1]/40 text-[#6366F1]" : "bg-white/5 border-white/10"
+                            )}>
+                              <FileText className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                               <p className="text-xs font-bold truncate">{s.title}</p>
+                               <p className="text-[9px] uppercase tracking-widest opacity-50">{s.type}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <div className="backdrop-blur-2xl bg-white/[0.02] border border-white/10 rounded-[2rem] shadow-2xl shadow-black/50 transition-all group-focus-within:border-[#6366F1]/50 group-focus-within:bg-white/[0.04] p-2 flex items-center">
+                  <button 
+                    onClick={() => setIsKbOpen(true)}
+                    className="p-3 rounded-full hover:bg-white/5 text-white/20 hover:text-[#6366F1] transition-all"
+                  >
+                    <Database className="w-5 h-5" />
+                  </button>
+                  <div className="w-[1px] h-6 bg-white/5 mx-1" />
                   <textarea
                     ref={textareaRef}
                     value={question}
@@ -667,96 +738,26 @@ export function LegalAssistant() {
                       handleTextareaChange(e);
                     }}
                     onKeyDown={handleKeyDown}
-                    placeholder="Ask about Sections, IPC, CrPC..."
-                    className="w-full bg-transparent border-none resize-none px-6 py-2 text-sm text-white/90 focus:ring-0 placeholder:text-white/20 min-h-[50px] no-scrollbar"
+                    placeholder="Search statutes, case laws..."
+                    className="bg-transparent flex-1 outline-none text-sm text-white/80 px-4 placeholder:text-white/10 resize-none py-3 no-scrollbar"
+                    style={{ minHeight: '50px' }}
                   />
-                </div>
-                
-                {/* Active Tags */}
-                {taggedSourceIds.size > 0 && (
-                  <div className="px-6 pb-2 flex flex-wrap gap-2">
-                    {Array.from(taggedSourceIds).map(sid => {
-                      const s = sources.find(src => src.id === sid);
-                      if (!s) return null;
-                      return (
-                        <div key={sid} className="flex items-center gap-2 pl-2 pr-1 py-1 rounded-lg bg-[#6366F1]/20 border border-[#6366F1]/30 text-[#6366F1]">
-                          <span className="text-[10px] font-bold truncate max-w-[120px]">@{s.title}</span>
-                          <button onClick={() => {
-                            const next = new Set(taggedSourceIds);
-                            next.delete(sid);
-                            setTaggedSourceIds(next);
-                          }} className="p-0.5 hover:bg-[#6366F1]/20 rounded transition-all">
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div className="p-3 border-t border-white/5 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <button className="p-2.5 rounded-xl bg-white/5 text-white/40 hover:bg-white/10 hover:text-[#6366F1] transition-all">
-                      <Paperclip className="w-4 h-4" />
-                    </button>
-                    <div className="w-[1px] h-4 bg-white/10 mx-1" />
-                    <div className="flex items-center bg-white/5 rounded-xl p-1">
-                      {['statute', 'judgment'].map(f => (
-                        <button 
-                          key={f}
-                          onClick={() => setLegalFilter(legalFilter === f ? null : f)}
-                          className={cn(
-                            "px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all",
-                            legalFilter === f ? "bg-[#6366F1] text-white" : "text-white/20 hover:text-white"
-                          )}
-                        >
-                          {f}s
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/5">
-                      <Zap className={cn("w-3.5 h-3.5 transition-colors", agenticMode ? "text-amber-500" : "text-white/20")} />
-                      <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Deep Research</span>
-                      <button 
-                        onClick={() => {
-                          const next = !agenticMode;
-                          setAgenticMode(next);
-                          localStorage.setItem('legal-agentic-mode', String(next));
-                        }}
-                        className={cn(
-                          "w-8 h-4 rounded-full relative transition-all duration-300",
-                          agenticMode ? "bg-[#6366F1]" : "bg-white/10"
-                        )}
-                      >
-                        <motion.div 
-                          animate={{ x: agenticMode ? 18 : 2 }}
-                          className="absolute top-1 w-2 h-2 rounded-full bg-white shadow-sm"
-                        />
-                      </button>
-                    </div>
-
-                    <button
-                      onClick={() => handleSubmit()}
-                      disabled={!question.trim() || isThinking || isStreaming}
-                      className={cn(
-                        "p-2 rounded-xl transition-all",
-                        question.trim() ? "bg-[#6366F1] text-white" : "bg-white/5 text-white/10"
-                      )}
-                    >
-                      <Send className="w-4 h-4" />
-                    </button>
-                  </div>
+                  <button 
+                    onClick={() => handleSubmit()}
+                    disabled={!question.trim() || isThinking || isStreaming}
+                    className={cn(
+                      "p-3 rounded-full transition-all ml-2",
+                      question.trim() ? "bg-[#6366F1] text-white shadow-lg shadow-[#6366F1]/20" : "bg-white/5 text-white/10"
+                    )}
+                  >
+                    <Send className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
-            </div>
             </div>
           </div>
         )}
       </div>
-
 
       {/* Source Selection Modal (KB) */}
       <AnimatePresence>
@@ -770,7 +771,7 @@ export function LegalAssistant() {
             >
                <div className="flex items-center justify-between mb-8">
                   <div>
-                    <h2 className="text-2xl font-bold">Constitutional Library</h2>
+                    <h2 className="text-2xl font-bold">Constitutional Database</h2>
                     <p className="text-[10px] text-white/20 font-bold uppercase tracking-[0.2em] mt-1">Select evidence for legal analysis</p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -823,7 +824,9 @@ export function LegalAssistant() {
                           "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
                           selectedSourceIds.has(source.id) ? "bg-[#6366F1]/20 text-[#6366F1]" : "bg-white/5 text-white/20"
                         )}>
-                          {source.type === 'pdf' ? <FileText className="w-5 h-5" /> : <Globe className="w-5 h-5" />}
+                          {source.type === 'pdf' ? <FileText className="w-5 h-5" /> : 
+                           source.type === 'image' ? <ImageIcon className="w-5 h-5" /> :
+                           <Globe className="w-5 h-5" />}
                         </div>
                         <div>
                           <p className="text-xs font-bold">{source.title}</p>
@@ -1064,12 +1067,39 @@ export function LegalAssistant() {
         onChange={async (e) => {
           const file = e.target.files?.[0];
           if (!file) return;
-          try {
-            const newSource = await uploadPdf(file);
-            setSources(prev => [newSource, ...prev]);
-            setSelectedSourceIds(prev => new Set(prev).add(newSource.id));
-          } catch (e) {
-            setError("Upload failed");
+          e.target.value = '';
+
+          if (file.type.startsWith('image/')) {
+            setIsUploadingImage(true);
+            setImagePreviewUrl(URL.createObjectURL(file));
+            try {
+              const res = await uploadImage(file);
+              setActiveImageId(res.image_id);
+              
+              const imgSource: KnowledgeSource = {
+                id: res.image_id,
+                type: 'image' as any,
+                title: file.name,
+                chunkCount: 1,
+                status: 'completed',
+                dateAdded: new Date()
+              };
+              setSources(prev => [imgSource, ...prev]);
+              setSelectedSourceIds(prev => new Set(prev).add(res.image_id));
+            } catch (err: any) {
+              setError("Image upload failed");
+              setImagePreviewUrl(null);
+            } finally {
+              setIsUploadingImage(false);
+            }
+          } else if (file.type === 'application/pdf') {
+            try {
+              const newSource = await uploadPdf(file);
+              setSources(prev => [newSource, ...prev]);
+              setSelectedSourceIds(prev => new Set(prev).add(newSource.id));
+            } catch (e) {
+              setError("Upload failed");
+            }
           }
         }}
       />

@@ -2,7 +2,7 @@
 
 :root {
   --font-size: 16px;
-  --background: #fafafa;
+  --background: #ffffff;
   --foreground: oklch(0.145 0 0);
   --card: #ffffff;
   --card-foreground: oklch(0.145 0 0);
@@ -18,7 +18,7 @@
   --accent-foreground: #030213;
   --destructive: #d4183d;
   --destructive-foreground: #ffffff;
-  --border: rgba(0, 0, 0, 0.05);
+  --border: rgba(0, 0, 0, 0.1);
   --input: transparent;
   --input-background: #f3f3f5;
   --switch-background: #cbced4;
@@ -39,16 +39,6 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
-
-  /* Aurora Variables */
-  --white: #ffffff;
-  --black: #000000;
-  --transparent: transparent;
-  --blue-500: #3b82f6;
-  --indigo-300: #a5b4fc;
-  --blue-300: #93c5fd;
-  --violet-200: #ddd6fe;
-  --blue-400: #60a5fa;
 }
 
 .dark {
@@ -138,6 +128,11 @@
     @apply bg-background text-foreground;
   }
 
+  /**
+  * Default typography styles for HTML elements (h1-h4, p, label, button, input).
+  * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
+  */
+
   html {
     font-size: var(--font-size);
   }
@@ -182,28 +177,5 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
-  }
-}
-
-@layer utilities {
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  .no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  @keyframes aurora {
-    from {
-      background-position: 50% 50%, 50% 50%;
-    }
-    to {
-      background-position: 350% 50%, 350% 50%;
-    }
-  }
-
-  .animate-aurora {
-    animation: aurora 60s linear infinite;
   }
 }

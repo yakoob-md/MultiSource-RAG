@@ -291,7 +291,11 @@ export function AskAI() {
       );
       const recentSources = sources
         .filter(s => selectedSourceIds.has(s.id) && !s.metadata?.docType)
-        .sort((a, b) => b.dateAdded.getTime() - a.dateAdded.getTime())
+        .sort((a, b) => {
+          const t1 = a.dateAdded?.getTime() || 0;
+          const t2 = b.dateAdded?.getTime() || 0;
+          return t2 - t1;
+        })
         .slice(0, 5);
       return [...legalSources, ...recentSources];
     }
@@ -330,9 +334,18 @@ export function AskAI() {
     localStorage.setItem('intellex-agentic-mode', String(agenticMode));
   }, [agenticMode]);
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingAnswer]);
+    if (scrollRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
+      if (isAtBottom || !isStreaming) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  }, [messages, streamingAnswer, isStreaming]);
+
   const handleNewChat = useCallback(() => {
     setActiveConvId(null);
     setMessages([]);
@@ -389,6 +402,13 @@ export function AskAI() {
     }
   }, []);
 
+  // ── URL Navigation Hook ──
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    if (id) loadConversation(id);
+  }, [loadConversation]);
+
   const handleOpenSources = useCallback(() => setIsKbOpen(true), []);
   const handleOpenHistory = useCallback(() => setSidebarOpen(true), []);
 
@@ -425,6 +445,17 @@ export function AskAI() {
         const res = await uploadImage(file);
         setActiveImageId(res.image_id);
         setUploadedFile({ name: file.name, type: 'image' });
+        
+        // Add to sources so it shows up in Resource Manager
+        const imgSource: KnowledgeSource = {
+          id: res.image_id,
+          type: 'image' as any,
+          title: file.name,
+          chunkCount: 1,
+          status: 'completed',
+          dateAdded: new Date()
+        };
+        setSources(prev => [imgSource, ...prev]);
       } catch (err: any) {
         setError(err.message || "Image upload failed");
         setImagePreviewUrl(null);
@@ -579,45 +610,30 @@ export function AskAI() {
     pdf: sources.filter(s => s.type === 'pdf').length,
     web: sources.filter(s => s.type === 'web').length,
     youtube: sources.filter(s => s.type === 'youtube').length,
+    image: sources.filter(s => s.type === 'image').length,
     total: sources.length
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#fafafa] relative overflow-hidden">
-      {/* Aurora Background Wrapper */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className={cn(
-          `
-          [--white-gradient:repeating-linear-gradient(100deg,var(--white)_0%,var(--white)_7%,var(--transparent)_10%,var(--transparent)_12%,var(--white)_16%)]
-          [--dark-gradient:repeating-linear-gradient(100deg,var(--black)_0%,var(--black)_7%,var(--transparent)_10%,var(--transparent)_12%,var(--black)_16%)]
-          [--aurora:repeating-linear-gradient(100deg,var(--blue-500)_10%,var(--indigo-300)_15%,var(--blue-300)_20%,var(--violet-200)_25%,var(--blue-400)_30%)]
-          [background-image:var(--white-gradient),var(--aurora)]
-          [background-size:300%,_200%]
-          [background-position:50%_50%,50%_50%]
-          filter blur-[10px] invert dark:invert-0
-          after:content-[""] after:absolute after:inset-0 after:[background-image:var(--white-gradient),var(--aurora)] 
-          after:[background-size:200%,_100%] 
-          after:animate-aurora after:[background-attachment:fixed] after:mix-blend-difference
-          pointer-events-none
-          absolute -inset-[10px] opacity-40 will-change-transform
-          [mask-image:radial-gradient(ellipse_at_100%_0%,black_10%,var(--transparent)_70%)]`
-        )}></div>
-      </div>
+    <div className="h-full flex flex-col bg-transparent relative overflow-hidden">
       {/* Main Container */}
-      <div className="flex-1 flex flex-col relative z-10">
+      <div className="flex-1 flex flex-col relative z-10 min-h-0">
 
         {/* Chat History View */}
-        <div className={cn(
-          "flex-1 overflow-y-auto px-6 sm:px-12 py-8 space-y-8 no-scrollbar scroll-smooth transition-all duration-700",
-          isInitial ? "opacity-0 translate-y-10 pointer-events-none" : "opacity-100 translate-y-0"
-        )}>
+        <div 
+          ref={scrollRef}
+          className={cn(
+            "flex-1 min-h-0 overflow-y-auto px-6 sm:px-12 py-8 space-y-8",
+            isInitial ? "opacity-0 translate-y-10" : "opacity-100 translate-y-0"
+          )}
+        >
           {messages.map(msg => (
             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={cn(
                 "max-w-[85%] rounded-3xl p-6 transition-all",
                 msg.role === 'user'
-                  ? "bg-black text-white shadow-xl shadow-black/10"
-                  : "bg-white border border-black/5 shadow-sm relative group"
+                  ? "bg-[#6366F1] text-white shadow-xl shadow-[#6366F1]/10"
+                  : "bg-white/[0.03] border border-white/5 backdrop-blur-xl relative group"
               )}>
                 {msg.role === 'assistant' && (
                   <button
@@ -628,7 +644,7 @@ export function AskAI() {
                     <FileDown className="w-4 h-4" />
                   </button>
                 )}
-                <p className="text-sm leading-relaxed whitespace-pre-line font-medium text-black/80">{msg.content}</p>
+                <p className="text-sm leading-relaxed whitespace-pre-line font-medium">{msg.content}</p>
 
                 {/* Rich Citation Panel — shown for assistant messages with sources */}
                 {msg.role === 'assistant' && msg.retrievedChunks && msg.retrievedChunks.length > 0 && (
@@ -716,21 +732,24 @@ export function AskAI() {
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ duration: 0.5 }}
                 >
-                  <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-black">
+                  <h1 className="text-4xl sm:text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white to-white/40">
                     How can InteleX help today?
                   </h1>
                 </motion.div>
-                <p className="text-black/30 text-sm max-w-lg mx-auto font-medium">
+                <p className="text-white/30 text-sm max-w-lg mx-auto font-medium">
                   Ask about your law cases, research papers, or legal documents.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center justify-center gap-3">
-                <button onClick={() => navigateTo("/app/legal")} className="px-4 py-2 rounded-full bg-white border border-black/5 text-xs font-bold uppercase tracking-widest hover:bg-black/5 transition-all flex items-center gap-2 text-black/60 shadow-sm">
-                  <Lock className="w-3 h-3 text-black" /> Legal AI
+                <button onClick={() => navigateTo("/app/legal")} className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2">
+                  <Lock className="w-3 h-3 text-[#6366F1]" /> Legal AI
                 </button>
-                <button onClick={() => setIsKbOpen(true)} className="px-4 py-2 rounded-full bg-white border border-black/5 text-xs font-bold uppercase tracking-widest hover:bg-black/5 transition-all flex items-center gap-2 text-black/60 shadow-sm">
-                  <Database className="w-3 h-3 text-black" /> Sources
+                <button onClick={() => setIsKbOpen(true)} className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2">
+                  <Database className="w-3 h-3 text-[#6366F1]" /> Sources
+                </button>
+                <button onClick={() => setSidebarOpen(true)} className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2">
+                  <Clock className="w-3 h-3 text-[#6366F1]" /> History
                 </button>
               </div>
             </motion.div>
@@ -739,14 +758,14 @@ export function AskAI() {
 
         {/* Unified Input Bar — fixed to bottom when chatting */}
         <div className={cn(
-          "w-full max-w-3xl mx-auto transition-all duration-700",
+          "w-full max-w-2xl mx-auto transition-all duration-700",
           isInitial
             ? "px-6 pb-12"
-            : "fixed bottom-0 left-1/2 -translate-x-1/2 z-50 px-4 pb-6 w-full max-w-3xl"
+            : "fixed bottom-0 left-1/2 -translate-x-1/2 z-50 px-4 pb-6 w-full max-w-2xl"
         )}>
           {/* Gradient fade behind input bar — prevents text bleed-through */}
           {!isInitial && (
-            <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#fafafa] via-[#fafafa]/90 to-transparent pointer-events-none -z-10 rounded-t-2xl" />
+            <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/90 to-transparent pointer-events-none -z-10 rounded-t-2xl" />
           )}
           <div className="relative group">
             {/* Upload feedback chip — shown after PDF/image upload (like ChatGPT) */}
@@ -838,9 +857,34 @@ export function AskAI() {
               )}
             </AnimatePresence>
 
+            {/* Selected Sources Tags Preview */}
+            {!isInitial && selectedSourceIds.size > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {Array.from(selectedSourceIds).map(id => {
+                  const s = sources.find(src => src.id === id);
+                  if (!s) return null;
+                  return (
+                    <div key={id} className="flex items-center gap-2 pl-3 pr-2 py-1 rounded-full bg-[#6366F1]/10 border border-[#6366F1]/20 text-[9px] font-bold text-[#6366F1] uppercase tracking-widest group hover:bg-[#6366F1]/20 transition-all">
+                      <span className="truncate max-w-[120px]">{s.title}</span>
+                      <button 
+                        onClick={() => {
+                          const next = new Set(selectedSourceIds);
+                          next.delete(id);
+                          setSelectedSourceIds(next);
+                        }}
+                        className="p-1 rounded-full hover:bg-red-500/10 text-[#6366F1]/50 hover:text-red-500 transition-all"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <div className={cn(
-              "bg-white rounded-2xl border border-black/5 shadow-2xl transition-all",
-              "focus-within:border-black/10 focus-within:shadow-black/5"
+              "backdrop-blur-2xl bg-white/[0.02] rounded-2xl border border-white/5 shadow-2xl transition-all",
+              "focus-within:border-white/10 focus-within:bg-white/[0.04]"
             )}>
               <div className="p-2 pt-4">
                 <Textarea
@@ -889,66 +933,42 @@ export function AskAI() {
                 />
               </div>
 
-              <div className="p-3 border-t border-white/5 flex items-center justify-between">
-                  <div className="flex items-center gap-1">
-                    {selectedSourceIds.size > 0 && (
-                      <button
-                        onClick={() => setIsSelectedPreviewOpen(true)}
-                        className="mr-2 flex items-center gap-2 px-2 py-1 rounded-lg bg-[#6366F1]/10 border border-[#6366F1]/20 hover:bg-[#6366F1]/20 transition-all"
-                      >
-                        <Database className="w-3 h-3 text-[#6366F1]" />
-                        <span className="text-[9px] font-bold text-[#6366F1] uppercase">{selectedSourceIds.size} Selected</span>
-                      </button>
+              <div className="p-3 border-t border-white/5 flex items-center justify-between bg-white/[0.01]">
+                <div className="flex items-center gap-2">
+                  {/* Source Toggle */}
+                  <button
+                    onClick={() => setIsIngestionModalOpen(true)}
+                    disabled={isUploadingSource || isProcessingExternal}
+                    className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/20 hover:text-[#6366F1] hover:bg-[#6366F1]/10 hover:border-[#6366F1]/30 transition-all disabled:opacity-50 group relative"
+                    title="Add Knowledge Source"
+                  >
+                    {isUploadingSource || isProcessingExternal ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-[#6366F1]" />
+                    ) : (
+                      <Plus className="w-4 h-4" />
                     )}
+                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-black text-[9px] font-bold text-white rounded-md opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap">Add Source</span>
+                  </button>
 
-                    <button
-                      onClick={() => setAgenticMode(!agenticMode)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all ${
-                        agenticMode 
-                          ? 'bg-purple-500/10 text-purple-400 border-purple-500/30 shadow-[0_0_10px_rgba(168,85,247,0.1)]' 
-                          : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'
-                      }`}
-                      title="Enable Agentic Multi-Stage Reasoning"
-                    >
-                      <Brain className={`w-3.5 h-3.5 ${agenticMode ? 'animate-pulse' : ''}`} />
-                      <span>Deep Research</span>
-                    </button>
+                  <div className="h-4 w-px bg-white/5 mx-1" />
 
-                    <div className="h-4 w-px bg-white/5 mx-1" />
+                  {/* Deep Research Toggle */}
+                  <button
+                    onClick={() => setAgenticMode(!agenticMode)}
+                    className={cn(
+                      "p-2 rounded-xl border transition-all group relative",
+                      agenticMode 
+                        ? 'bg-purple-500/10 text-purple-400 border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.1)]' 
+                        : 'bg-white/5 text-white/20 border-white/10 hover:bg-white/10 hover:text-white'
+                    )}
+                    title="Deep Research Mode"
+                  >
+                    <Brain className={cn("w-4 h-4", agenticMode && "animate-pulse")} />
+                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-black text-[9px] font-bold text-white rounded-md opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap">Deep Research</span>
+                  </button>
 
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:border-[#6366F1]/30 transition-all group">
-                      <Zap className="w-3.5 h-3.5 text-[#6366F1]" />
-                      <select
-                        value={llmProvider}
-                        onChange={(e) => setLlmProvider(e.target.value)}
-                        className="bg-transparent border-none text-[10px] font-bold uppercase tracking-widest text-white/40 focus:outline-none cursor-pointer group-hover:text-white transition-colors"
-                        title="Select LLM Provider"
-                      >
-                        <option value="groq" className="bg-[#0A0A0B]">Groq 8B (Speed)</option>
-                        <option value="huggingface" className="bg-[#0A0A0B]">Kaggle Fine-Tuned</option>
-                      </select>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsIngestionModalOpen(true)}
-                      disabled={isUploadingSource || isProcessingExternal}
-                      className="p-2 text-white/20 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50"
-                      title="Add Knowledge Source"
-                    >
-                      {isUploadingSource || isProcessingExternal ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-[#6366F1]" />
-                      ) : (
-                        <Plus className="w-4 h-4" />
-                      )}
-                      <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">
-                        {isUploadingSource || isProcessingExternal ? 'Processing...' : 'Source'}
-                      </span>
-                    </button>
-                    <input type="file" ref={sourceFileInputRef} onChange={handleFileChange} accept="image/*,application/pdf" className="hidden" />
-
-                  <div className="h-4 w-px bg-white/5 mx-2" />
-
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-[#6366F1]/30 transition-all group">
+                  {/* Model Selector */}
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:border-[#6366F1]/30 transition-all group">
                     {llmProvider === 'huggingface' ? (
                       <Sparkles className="w-3.5 h-3.5 text-[#6366F1]" />
                     ) : (
@@ -976,6 +996,7 @@ export function AskAI() {
                   <SendIcon className="w-4 h-4" />
                 </button>
               </div>
+              <input type="file" ref={sourceFileInputRef} onChange={handleFileChange} accept="image/*,application/pdf" className="hidden" />
             </div>
           </div>
         </div>
@@ -1031,6 +1052,7 @@ export function AskAI() {
                   {[
                     { label: 'Total Sources', value: stats.total, icon: Database, color: 'text-[#6366F1]' },
                     { label: 'PDF Documents', value: stats.pdf, icon: FileText, color: 'text-violet-400' },
+                    { label: 'Images', value: stats.image, icon: ImageIcon, color: 'text-pink-400' },
                     { label: 'Web Pages', value: stats.web, icon: Globe, color: 'text-blue-400' },
                     { label: 'YouTube Links', value: stats.youtube, icon: Youtube, color: 'text-red-400' },
                   ].map((s, i) => (
@@ -1093,8 +1115,13 @@ export function AskAI() {
                       <div className="w-2 h-2 rounded-full bg-red-400" />
                       <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">YouTube Transcripts</span>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-pink-400" />
+                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Visual Evidence (Images)</span>
+                    </div>
                   </div>
                 </div>
+
 
                 {/* All Knowledge Sources */}
                 <div className="space-y-4 relative z-10">
@@ -1167,6 +1194,113 @@ export function AskAI() {
         )}
       </AnimatePresence>
 
+      {/* History Sidebar Overlay */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSidebarOpen(false)}
+              className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ x: -320 }}
+              animate={{ x: 0 }}
+              exit={{ x: -320 }}
+              className="fixed top-0 left-0 bottom-0 w-85 z-[101] bg-[#0A0A0B]/95 backdrop-blur-2xl border-r border-white/10 p-8 flex flex-col shadow-2xl overflow-hidden"
+            >
+              {/* Beams Background for Sidebar */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40">
+                <div className="absolute -top-[10%] -right-[20%] w-[80%] h-[40%] rounded-full bg-[#6366F1]/10 blur-[80px]" />
+                <div className="absolute bottom-[20%] -left-[20%] w-[60%] h-[50%] rounded-full bg-violet-500/5 blur-[90px]" />
+              </div>
+
+              <div className="flex items-center justify-between mb-10 relative z-10">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-center">
+                    <History className="w-5 h-5 text-[#6366F1]" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold tracking-tight">Intelligence</h2>
+                    <p className="text-[9px] text-white/20 font-bold uppercase tracking-[0.2em]">Conversation History</p>
+                  </div>
+                </div>
+                <button onClick={() => setSidebarOpen(false)} className="p-2 hover:bg-white/5 rounded-xl text-white/20 hover:text-white transition-all">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <button
+                onClick={() => { handleNewChat(); setSidebarOpen(false); }}
+                className="w-full py-3 px-4 mb-8 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-2xl flex items-center justify-center gap-3 transition-all shadow-lg shadow-[#6366F1]/20 group relative z-10"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="text-[11px] font-bold uppercase tracking-widest">New Intelligence Case</span>
+              </button>
+
+              <div className="flex-1 overflow-y-auto space-y-3 no-scrollbar pr-2">
+                {conversations.length === 0 ? (
+                  <div className="py-10 text-center space-y-2">
+                    <p className="text-white/20 text-xs font-bold uppercase tracking-widest">No chats yet</p>
+                    <button onClick={handleNewChat} className="text-[10px] text-[#6366F1] font-bold underline">Start your first one</button>
+                  </div>
+                ) : (
+                  conversations.map(conv => (
+                      <button
+                        key={conv.id}
+                        onClick={() => {
+                          if (conv.conv_type === 'legal') {
+                            navigate(`/app/legal?id=${conv.id}`);
+                          } else {
+                            loadConversation(conv.id);
+                          }
+                          setSidebarOpen(false);
+                        }}
+                      className={cn(
+                        "w-full flex items-center gap-4 p-4 rounded-2xl transition-all border text-left group relative",
+                        activeConvId === conv.id
+                          ? "bg-[#6366F1]/10 border-[#6366F1]/30 text-white"
+                          : "bg-white/[0.02] border-white/5 text-white/40 hover:bg-white/[0.04] hover:border-white/10"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center border transition-colors",
+                        activeConvId === conv.id 
+                          ? "bg-[#6366F1]/20 border-[#6366F1]/40 text-[#6366F1]" 
+                          : "bg-white/5 border-white/10 text-white/20 group-hover:text-white/60"
+                      )}>
+                        {conv.conv_type === 'legal' ? (
+                          <Gavel className="w-4 h-4" />
+                        ) : (
+                          <MessageSquare className="w-4 h-4" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold truncate group-hover:text-white transition-colors">{conv.title}</p>
+                        <p className="text-[9px] font-medium text-white/20 uppercase tracking-tighter mt-0.5">
+                          {conv.conv_type === 'legal' ? 'Legal Case' : 'General Intelligence'}
+                          {conv.updated_at && ` · ${new Date(conv.updated_at).toLocaleDateString()}`}
+                        </p>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              <div className="pt-6 border-t border-white/5 mt-auto">
+                <button
+                  onClick={handleNewChat}
+                  className="w-full py-4 bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] transition-all"
+                >
+                  + New Conversation
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Unified Ingestion Modal */}
       <AnimatePresence>
